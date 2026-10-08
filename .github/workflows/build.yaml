@@ -7,6 +7,9 @@ on:
       - "fix/**"
     tags:
       - "v*"
+  pull_request:
+    branches:
+      - win11-compatibility
 
 permissions:
   contents: write
