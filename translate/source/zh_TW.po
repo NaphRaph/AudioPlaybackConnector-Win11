@@ -50,6 +50,12 @@ msgstr "結束"
 msgid "Bluetooth Settings"
 msgstr "藍牙設定"
 
+msgid "Open Logs Folder"
+msgstr "開啟記錄資料夾"
+
+msgid "Playback volume"
+msgstr "播放音量"
+
 #: AudioPlaybackConnector.cpp:287
 msgid "Connecting"
 msgstr "連線中"

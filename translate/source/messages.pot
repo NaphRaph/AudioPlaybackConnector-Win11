@@ -48,6 +48,12 @@ msgstr ""
 msgid "Bluetooth Settings"
 msgstr ""
 
+msgid "Open Logs Folder"
+msgstr ""
+
+msgid "Playback volume"
+msgstr ""
+
 #: AudioPlaybackConnector.cpp:287
 msgid "Connecting"
 msgstr ""

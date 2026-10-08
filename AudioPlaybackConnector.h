@@ -35,6 +35,7 @@ struct AudioPlaybackConnectionEntry
 HINSTANCE g_hInst;
 HWND g_hWnd;
 HWND g_hWndXaml;
+wil::unique_handle g_singleInstanceMutex;
 Canvas g_xamlCanvas = nullptr;
 Flyout g_xamlFlyout = nullptr;
 Flyout g_xamlDeviceFlyout = nullptr;
@@ -49,6 +50,7 @@ std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> g_lastCo
 std::unordered_set<std::wstring> g_primedDevices;
 std::recursive_mutex g_connectionMutex;
 std::mutex g_deviceListMutex;
+std::mutex g_logMutex;
 HICON g_hIconLight = nullptr;
 HICON g_hIconDark = nullptr;
 NOTIFYICONDATAW g_nid = {
@@ -62,6 +64,7 @@ NOTIFYICONIDENTIFIER g_niid = {
 };
 UINT WM_TASKBAR_CREATED = 0;
 bool g_reconnect = false;
+std::atomic<double> g_playbackVolume = 1.0;
 std::vector<std::wstring> g_lastDevices;
 uint64_t g_nextConnectionGeneration = 0;
 std::atomic_uint64_t g_deviceWatcherGeneration = 0;
@@ -70,6 +73,8 @@ std::atomic_bool g_devicePickerVisible = false;
 std::atomic_bool g_shuttingDown = false;
 
 #include "Util.hpp"
+#include "Logging.hpp"
 #include "I18n.hpp"
 #include "SettingsUtil.hpp"
+#include "AudioSessionVolume.hpp"
 #include "Direct2DSvg.hpp"

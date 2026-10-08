@@ -110,8 +110,20 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	UNREFERENCED_PARAMETER(nCmdShow);
 
 	g_hInst = hInstance;
+	SetLastError(ERROR_SUCCESS);
+	auto singleInstanceMutex = CreateMutexW(nullptr, FALSE,
+		L"Local\\AudioPlaybackConnector.SingleInstance.2DAAABDD-2402-4023-BC3E-B6E93FAD567B");
+	const auto singleInstanceError = GetLastError();
+	g_singleInstanceMutex.reset(singleInstanceMutex);
+	if (!g_singleInstanceMutex)
+		return EXIT_FAILURE;
+	if (singleInstanceError == ERROR_ALREADY_EXISTS)
+		return EXIT_SUCCESS;
 
 	winrt::init_apartment();
+	LoadSettings();
+	LoadTranslateData();
+	AppendLog(L"Application started");
 
 	bool supported = false;
 	try
@@ -157,7 +169,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	g_xamlCanvas = Canvas();
 	desktopSource.Content(g_xamlCanvas);
 
-	LoadSettings();
 	SetupFlyout();
 	SetupMenu();
 	SetupDevicePicker();
@@ -195,6 +206,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 		if (g_shuttingDown.exchange(true))
 			break;
+		AppendLog(L"Application shutdown requested");
 
 		if (g_deviceWatcher)
 		{
@@ -247,6 +259,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 	case WM_DESTROY:
 		g_shuttingDown = true;
+		AppendLog(L"Application stopped");
 		{
 			std::lock_guard lock(g_connectionMutex);
 			for (const auto& connection : g_audioPlaybackConnections)
@@ -333,11 +346,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			std::lock_guard lock(g_connectionMutex);
 			auto it = g_audioPlaybackConnections.find(stateChanged->deviceId);
 			if (it == g_audioPlaybackConnections.end() ||
-				it->second.Generation != stateChanged->generation ||
-				it->second.Connection.State() != AudioPlaybackConnectionState::Closed)
+				it->second.Generation != stateChanged->generation)
 				break;
 			g_audioPlaybackConnections.erase(it);
 			g_lastConnectionCloseTimes.insert_or_assign(stateChanged->deviceId, std::chrono::steady_clock::now());
+			AppendLog(L"Bluetooth audio connection closed: " + stateChanged->deviceId);
 			QueueDeviceListRefresh();
 		}
 	}
@@ -446,24 +459,49 @@ void SetupFlyout()
 void SetupMenu()
 {
 	const bool lightTheme = IsLightTheme();
+	auto menuForeground = CreateTextBrush(lightTheme);
 
 	// https://docs.microsoft.com/en-us/windows/uwp/design/style/segoe-ui-symbol-font
 	FontIcon settingsIcon;
 	settingsIcon.Glyph(L"\xE713");
+	settingsIcon.Foreground(menuForeground);
 
 	MenuFlyoutItem settingsItem;
 	settingsItem.Text(_(L"Bluetooth Settings"));
 	settingsItem.Icon(settingsIcon);
+	settingsItem.Foreground(menuForeground);
 	settingsItem.Click([](const auto&, const auto&) {
 		winrt::Windows::System::Launcher::LaunchUriAsync(Uri(L"ms-settings:bluetooth"));
 	});
 
+	FontIcon logIcon;
+	logIcon.Glyph(L"\xE8A5");
+	logIcon.Foreground(menuForeground);
+
+	MenuFlyoutItem logItem;
+	logItem.Text(_(L"Open Logs Folder"));
+	logItem.Icon(logIcon);
+	logItem.Foreground(menuForeground);
+	logItem.Click([](const auto&, const auto&) {
+		try
+		{
+			auto path = GetLogDirectory();
+			ShellExecuteW(g_hWnd, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+		}
+		catch (...)
+		{
+			AppendLog(L"Failed to open logs folder");
+		}
+	});
+
 	FontIcon closeIcon;
 	closeIcon.Glyph(L"\xE8BB");
+	closeIcon.Foreground(menuForeground);
 
 	MenuFlyoutItem exitItem;
 	exitItem.Text(_(L"Exit"));
 	exitItem.Icon(closeIcon);
+	exitItem.Foreground(menuForeground);
 	exitItem.Click([](const auto&, const auto&) {
 		bool hasConnections = false;
 		{
@@ -495,6 +533,7 @@ void SetupMenu()
 
 	MenuFlyout menu;
 	menu.Items().Append(settingsItem);
+	menu.Items().Append(logItem);
 	menu.Items().Append(exitItem);
 	ApplyWin11MenuStyle(menu, lightTheme);
 	menu.Opened([](const auto& sender, const auto&) {
@@ -570,6 +609,7 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 	// remains responsible only for displaying device rows.
 	auto uiContext = winrt::apartment_context();
 	const auto deviceId = std::wstring(device.Id());
+	AppendLog(L"Connection requested: " + std::wstring(device.Name()) + L" [" + deviceId + L"]");
 	{
 		std::lock_guard lock(g_connectionMutex);
 		g_deviceErrorMessages.erase(deviceId);
@@ -580,18 +620,7 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 		std::lock_guard lock(g_connectionMutex);
 		auto existing = g_audioPlaybackConnections.find(deviceId);
 		if (existing != g_audioPlaybackConnections.end())
-		{
-			if (existing->second.Connecting)
-				co_return;
-			if (existing->second.Connection.State() == AudioPlaybackConnectionState::Opened)
-				co_return;
-		}
-		if (existing != g_audioPlaybackConnections.end())
-		{
-			existing->second.Connection.Close();
-			g_audioPlaybackConnections.erase(existing);
-			g_lastConnectionCloseTimes.insert_or_assign(deviceId, std::chrono::steady_clock::now());
-		}
+			co_return;
 	}
 
 	// Closing AudioPlaybackConnection only begins releasing the underlying A2DP
@@ -723,6 +752,7 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 		// automatically once per device instead of reporting a silent connection.
 		if (primeConnection)
 		{
+			AppendLog(L"Priming first connection: " + deviceId);
 			CloseCurrentConnection(deviceId, generation);
 			// Keep the existing "Connecting" row visible during the cooldown so the
 			// user cannot start a second overlapping connection attempt.
@@ -738,6 +768,8 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			it->second.Connecting = false;
 			g_deviceErrorMessages.erase(deviceId);
 		}
+		AppendLog(L"Connection opened: " + deviceId);
+		ApplyPlaybackVolume(true);
 	}
 	else if (!g_shuttingDown)
 	{
@@ -748,6 +780,8 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			std::lock_guard lock(g_connectionMutex);
 			g_deviceErrorMessages[deviceId] = errorMessage.empty() ? _(L"Unknown error") : errorMessage;
 		}
+		AppendLog(L"Connection failed: " + deviceId + L"; " +
+			(errorMessage.empty() ? std::wstring(L"Unknown error") : errorMessage));
 	}
 
 	QueueDeviceListRefresh();
@@ -755,6 +789,7 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 
 void DisconnectDevice(std::wstring_view deviceId)
 {
+	AppendLog(L"Disconnect requested: " + std::wstring(deviceId));
 	{
 		std::lock_guard lock(g_connectionMutex);
 		auto it = g_audioPlaybackConnections.find(std::wstring(deviceId));
@@ -995,6 +1030,49 @@ void SetupDevicePicker()
 	deviceScroll.VerticalScrollBarVisibility(ScrollBarVisibility::Auto);
 	deviceScroll.Content(g_deviceListPanel);
 
+	Grid volumeRow;
+	volumeRow.Margin({ 0, 0, 0, 14 });
+	ColumnDefinition volumeLabelColumn;
+	volumeLabelColumn.Width(GridLength{ 92, GridUnitType::Pixel });
+	ColumnDefinition volumeSliderColumn;
+	volumeSliderColumn.Width(GridLength{ 1, GridUnitType::Star });
+	ColumnDefinition volumeValueColumn;
+	volumeValueColumn.Width(GridLength{ 48, GridUnitType::Pixel });
+	volumeRow.ColumnDefinitions().Append(volumeLabelColumn);
+	volumeRow.ColumnDefinitions().Append(volumeSliderColumn);
+	volumeRow.ColumnDefinitions().Append(volumeValueColumn);
+
+	TextBlock volumeLabel;
+	volumeLabel.Text(_(L"Playback volume"));
+	volumeLabel.VerticalAlignment(VerticalAlignment::Center);
+	volumeLabel.Foreground(textBrush);
+	Grid::SetColumn(volumeLabel, 0);
+	volumeRow.Children().Append(volumeLabel);
+
+	Slider volumeSlider;
+	volumeSlider.Minimum(0);
+	volumeSlider.Maximum(100);
+	volumeSlider.StepFrequency(1);
+	volumeSlider.Value(g_playbackVolume.load() * 100.0);
+	volumeSlider.VerticalAlignment(VerticalAlignment::Center);
+	Grid::SetColumn(volumeSlider, 1);
+	volumeRow.Children().Append(volumeSlider);
+
+	TextBlock volumeValue;
+	volumeValue.Text(std::to_wstring(static_cast<int>(std::lround(g_playbackVolume.load() * 100.0))) + L"%");
+	volumeValue.TextAlignment(TextAlignment::Right);
+	volumeValue.VerticalAlignment(VerticalAlignment::Center);
+	volumeValue.Foreground(secondaryTextBrush);
+	Grid::SetColumn(volumeValue, 2);
+	volumeRow.Children().Append(volumeValue);
+
+	volumeSlider.ValueChanged([volumeValue](const auto& sender, const auto&) {
+		const auto value = sender.as<Slider>().Value();
+		g_playbackVolume.store(std::clamp(value / 100.0, 0.0, 1.0));
+		volumeValue.Text(std::to_wstring(static_cast<int>(std::lround(value))) + L"%");
+		ApplyPlaybackVolume();
+	});
+
 	Button settingsButton;
 	settingsButton.Content(winrt::box_value(_(L"Bluetooth Settings")));
 	settingsButton.FontSize(13);
@@ -1030,6 +1108,7 @@ void SetupDevicePicker()
 	content.Padding({ 20, 18, 20, 18 });
 	content.Children().Append(titlePanel);
 	content.Children().Append(subtitle);
+	content.Children().Append(volumeRow);
 	content.Children().Append(deviceScroll);
 	content.Children().Append(footer);
 

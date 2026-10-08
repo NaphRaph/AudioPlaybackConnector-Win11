@@ -16,6 +16,8 @@ Turn a Windows 10/11 PC into a Bluetooth speaker. This app enables the built-in 
 - Windows 11-style Bluetooth device picker
 - Connect and disconnect paired phones from the notification area
 - Optional automatic reconnection on the next launch
+- Single-instance operation with support for multiple connected source devices
+- Independent PC-side playback volume control
 - Improved A2DP connection lifecycle for Windows 11
 - Portable single-file executable with no installer
 - Official x86, x64 and ARM64 builds
@@ -48,6 +50,12 @@ SHA-256 checksums are included in `SHA256SUMS.txt` on the Release page.
 5. Play audio on the phone. Sound is routed to the current Windows output device.
 
 Right-click the notification-area icon to open Bluetooth settings or exit the app. When exiting, **Reconnect on next start** can remember active devices and reconnect them on the next launch.
+
+The volume slider controls this app's Windows audio session independently from the phone volume and the system speaker volume. The effective output is the combination of all three levels.
+
+Settings and diagnostic logs are stored under `%LOCALAPPDATA%\AudioPlaybackConnector`, not beside the executable. An existing `AudioPlaybackConnector.json` beside the executable is migrated automatically.
+
+English, Simplified Chinese and Traditional Chinese are selected automatically from the Windows display language.
 
 ## Troubleshooting
 
