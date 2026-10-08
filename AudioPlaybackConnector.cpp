@@ -658,8 +658,10 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			switch (result.Status())
 			{
 			case AudioPlaybackConnectionOpenResultStatus::Success:
-				success = IsCurrentConnection(deviceId, generation) &&
-					connection.State() == AudioPlaybackConnectionState::Opened;
+				// OpenAsync completion is the authoritative result. StateChanged can
+				// arrive slightly later on some Bluetooth stacks, so checking State()
+				// synchronously here can misreport a successful connection as unknown.
+				success = IsCurrentConnection(deviceId, generation);
 				break;
 			case AudioPlaybackConnectionOpenResultStatus::RequestTimedOut:
 				success = false;
