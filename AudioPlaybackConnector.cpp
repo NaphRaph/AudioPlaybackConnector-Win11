@@ -494,4 +494,599 @@ void SetupMenu()
 	});
 
 	MenuFlyout menu;
-	menu.Items().A×_x¶‰ËkºwµçTì(%ÍÑèéİÍÑÉ¥¹œ•ÉÉ½É5•ÍÍ…”ì(%Õ‘¥½A±…å‰…­½¹¹•Ñ¥½¸½¹¹•Ñ¥½¸€ô¹Õ±±ÁÑÈì(%Õ¥¹ĞØÑ}Ğ•¹•É…Ñ¥½¸€ô€Àì((%ÑÉä(%ì($%½¹¹•Ñ¥½¸€ôÕ‘¥½A±…å‰…­½¹¹•Ñ¥½¸èéQÉåÉ•…Ñ•É½µ%¡‘•Ù¥”¹% ¤¤ì($%¥˜€ …½¹¹•Ñ¥½¸¤($%ì($$%•ÉÉ½É5•ÍÍ…”€ô|¡0‰U¹­¹½İ¸•ÉÉ½Èˆ¤ì($%ô($%•±Í”($%ì($$%•¹•É…Ñ¥½¸€ô€¬­}¹•áÑ½¹¹•Ñ¥½¹•¹•É…Ñ¥½¸ì($$%ì($$$%ÍÑèé±½­}Õ…É±½¬¡}½¹¹•Ñ¥½¹5ÕÑ•à¤ì($$$%}…Õ‘¥½A±…å‰…­½¹¹•Ñ¥½¹Ì¹¥¹Í•ÉÑ}½É}…ÍÍ¥¸¡‘•Ù¥•%°Õ‘¥½A±…å‰…­½¹¹•Ñ¥½¹¹ÑÉåì($$$$%½¹¹•Ñ¥½¸°•¹•É…Ñ¥½¸°ÑÉÕ”($$$%ô¤ì($$%ô($$%EÕ•Õ••Ù¥•1¥ÍÑI•™É•Í  ¤ì(($$%½¹¹•Ñ¥½¸¹MÑ…Ñ•¡…¹•¡m‘•Ù¥•%°•¹•É…Ñ¥½¹t¡½¹ÍĞ…ÕÑ¼˜Í•¹‘•È°½¹ÍĞ…ÕÑ¼˜¤ì($$$%¥˜€¡Í•¹‘•È¹MÑ…Ñ” ¤€ôôÕ‘¥½A±…å‰…­½¹¹•Ñ¥½¹MÑ…Ñ”èé±½Í•¤($$$$%EÕ•Õ•½¹¹•Ñ¥½¹MÑ…Ñ•¡…¹•¡‘•Ù¥•%°•¹•É…Ñ¥½¸¤ì($$%ô¤ì(($$$¼¼MÑ…ÉÑÍå¹Œ¥ÌÑ¥•Ñ¼Ñ¡¥Ì½¹¹•Ñ¥½¸¥¹ÍÑ…¹”¸Ù•Éä¹•İ±äÉ•…Ñ•($$$¼¼½¹¹•Ñ¥½¸µÕÍĞ‰”•¹…‰±•‰•™½É”¥Ğ¥Ì½Á•¹•¸($$%½}…İ…¥Ğ½¹¹•Ñ¥½¸¹MÑ…ÉÑÍå¹Œ ¤ì($$%½}…İ…¥ĞÕ¥½¹Ñ•áĞì($$%¥˜€¡}Í¡ÕÑÑ¥¹½İ¸¤($$$%½}É•ÑÕÉ¸ì($$%…ÕÑ¼É•ÍÕ±Ğ€ô½}…İ…¥Ğ½¹¹•Ñ¥½¸¹=Á•¹Íå¹Œ ¤ì($$%½}…İ…¥ĞÕ¥½¹Ñ•áĞì($$%¥˜€¡}Í¡ÕÑÑ¥¹½İ¸¤($$$%½}É•ÑÕÉ¸ì(($$%Íİ¥Ñ €¡É•ÍÕ±Ğ¹MÑ…ÑÕÌ ¤¤($$%ì($$%…Í”Õ‘¥½A±…å‰…­½¹¹•Ñ¥½¹=Á•¹I•ÍÕ±ÑMÑ…ÑÕÌèéMÕ•ÍÌè($$$%ÍÕ•ÍÌ€ô%ÍÕÉÉ•¹Ñ½¹¹•Ñ¥½¸¡‘•Ù¥•%°•¹•É…Ñ¥½¸¤€˜˜($$$$%½¹¹•Ñ¥½¸¹MÑ…Ñ” ¤€ôôÕ‘¥½A±…å‰…­½¹¹•Ñ¥½¹MÑ…Ñ”èé=Á•¹•ì($$$%‰É•…¬ì($$%…Í”Õ‘¥½A±…å‰…­½¹¹•Ñ¥½¹=Á•¹I•ÍÕ±ÑMÑ…ÑÕÌèéI•ÅÕ•ÍÑQ¥µ•‘=ÕĞè($$$%ÍÕ•ÍÌ€ô™…±Í”ì($$$%•ÉÉ½É5•ÍÍ…”€ô|¡0‰Q¡”É•ÅÕ•ÍĞÑ¥µ•½ÕĞˆ¤ì($$$%‰É•…¬ì($$%…Í”Õ‘¥½A±…å‰…­½¹¹•Ñ¥½¹=Á•¹I•ÍÕ±ÑMÑ…ÑÕÌèé•¹¥•‘	åMåÍÑ•´è($$$%ÍÕ•ÍÌ€ô™…±Í”ì($$$%•ÉÉ½É5•ÍÍ…”€ô|¡0‰Q¡”½Á•É…Ñ¥½¸İ…Ì‘•¹¥•‰äÑ¡”ÍåÍÑ•´ˆ¤ì($$$%‰É•…¬ì($$%…Í”Õ‘¥½A±…å‰…­½¹¹•Ñ¥½¹=Á•¹I•ÍÕ±ÑMÑ…ÑÕÌèéU¹­¹½İ¹…¥±ÕÉ”è($$$%ÍÕ•ÍÌ€ô™…±Í”ì($$$%ì($$$$%½¹ÍĞ…ÕÑ¼•áÑ•¹‘•‘ÉÉ½È€ôÉ•ÍÕ±Ğ¹áÑ•¹‘•‘ÉÉ½È ¤ì($$$$%1=}!H¡•áÑ•¹‘•‘ÉÉ½È¤ì($$$$%İ¡…É}Ğ•ÉÉ½É½‘•lÄÙuíôì($$$$%ÍİÁÉ¥¹Ñ™}Ì¡•ÉÉ½É½‘”°0ˆ€ Áà”Àá`¤ˆ°ÍÑ…Ñ¥}…ÍĞñÕ¥¹ĞÌÉ}Ğø¡•áÑ•¹‘•‘ÉÉ½È¤¤ì($$$$%•ÉÉ½É5•ÍÍ…”€ô|¡0‰U¹­¹½İ¸•ÉÉ½Èˆ¤ì($$$$%•ÉÉ½É5•ÍÍ…”€¬ô•ÉÉ½É½‘”ì($$$%ô($$$%‰É•…¬ì($$%ô($%ô(%ô(%…Ñ €¡İ¥¹ÉĞèé¡É•ÍÕ±Ñ}•ÉÉ½È½¹ÍĞ˜•à¤(%ì($%ÍÕ•ÍÌ€ô™…±Í”ì($%•ÉÉ½É5•ÍÍ…”¹É•Í¥é” ØĞ¤ì($%İ¡¥±”€ Ä¤($%ì($$%…ÕÑ¼É•ÍÕ±Ğ€ôÍİÁÉ¥¹Ñ˜¡•ÉÉ½É5•ÍÍ…”¹‘…Ñ„ ¤°•ÉÉ½É5•ÍÍ…”¹Í¥é” ¤°0ˆ•Ì€ Áà”Àá`¤ˆ°•à¹µ•ÍÍ…” ¤¹}ÍÑÈ ¤°ÍÑ…Ñ¥}…ÍĞñÕ¥¹ĞÌÉ}Ğø¡•à¹½‘” ¤¤¤ì($$%¥˜€¡É•ÍÕ±Ğ€ğ€À¤($$$%•ÉÉ½É5•ÍÍ…”¹É•Í¥é”¡•ÉÉ½É5•ÍÍ…”¹Í¥é” ¤€¨€È¤ì($$%•±Í”($$%ì($$$%•ÉÉ½É5•ÍÍ…”¹É•Í¥é”¡É•ÍÕ±Ğ¤ì($$$%‰É•…¬ì($$%ô($%ô($%1=}U!Q}aAQ%=8 ¤ì(%ô(%…Ñ € ¸¸¸¤(%ì($%ÍÕ•ÍÌ€ô™…±Í”ì($%•ÉÉ½É5•ÍÍ…”€ô|¡0‰U¹­¹½İ¸•ÉÉ½Èˆ¤ì($%1=}U!Q}aAQ%=8 ¤ì(%ô((%¥˜€¡ÍÕ•ÍÌ€˜˜%ÍÕÉÉ•¹Ñ½¹¹•Ñ¥½¸¡‘•Ù¥•%°•¹•É…Ñ¥½¸¤¤(%ì($%‰½½°ÁÉ¥µ•½¹¹•Ñ¥½¸€ô™…±Í”ì($%ì($$%ÍÑèé±½­}Õ…É±½¬¡}½¹¹•Ñ¥½¹5ÕÑ•à¤ì($$%ÁÉ¥µ•½¹¹•Ñ¥½¸€ô}ÁÉ¥µ•‘•Ù¥•Ì¹¥¹Í•ÉĞ¡‘•Ù¥•%¤¹Í•½¹ì($%ô(($$¼¼]¥¹‘½İÌ…¸…­¹½İ±•‘”Ñ¡”™¥ÉÍĞÉ@Í¥¹¬½¹¹•Ñ¥½¸…™Ñ•ÈÁÉ½•ÍÌ($$¼¼ÍÑ…ÉÑÕÀİ¥Ñ¡½ÕĞ¹•½Ñ¥…Ñ¥¹œ„İ½É­¥¹œ…Õ‘¥¼ÍÑÉ•…´¸±½Í”½½½±‘½İ¸½½Á•¸($$¼¼å±”¥ÌÑ¡”É•±¥…‰±”É•½Ù•Éä‘½Õµ•¹Ñ•‰äÑ¡¥ÌÁÉ½©•Ğ°Í¼Á•É™½É´¥Ğ($$¼¼…ÕÑ½µ…Ñ¥…±±ä½¹”Á•È‘•Ù¥”¥¹ÍÑ•…½˜É•Á½ÉÑ¥¹œ„Í¥±•¹Ğ½¹¹•Ñ¥½¸¸($%¥˜€¡ÁÉ¥µ•½¹¹•Ñ¥½¸¤($%ì($$%±½Í•ÕÉÉ•¹Ñ½¹¹•Ñ¥½¸¡‘•Ù¥•%°•¹•É…Ñ¥½¸¤ì($$$¼¼-••ÀÑ¡”•á¥ÍÑ¥¹œ€‰½¹¹•Ñ¥¹œˆÉ½ÜÙ¥Í¥‰±”‘ÕÉ¥¹œÑ¡”½½±‘½İ¸Í¼Ñ¡”($$$¼¼ÕÍ•È…¹¹½ĞÍÑ…ÉĞ„Í•½¹½Ù•É±…ÁÁ¥¹œ½¹¹•Ñ¥½¸…ÑÑ•µÁĞ¸($$%½¹¹•Ñ•Ù¥”¡‘•Ù¥”¤ì($$%½}É•ÑÕÉ¸ì($%ô(($%ì($$%ÍÑèé±½­}Õ…É±½¬¡}½¹¹•Ñ¥½¹5ÕÑ•à¤ì($$%…ÕÑ¼¥Ğ€ô}…Õ‘¥½A±…å‰…­½¹¹•Ñ¥½¹Ì¹™¥¹¡‘•Ù¥•%¤ì($$%¥˜€¡¥Ğ€ôô}…Õ‘¥½A±…å‰…­½¹¹•Ñ¥½¹Ì¹•¹ ¤¤($$$%½}É•ÑÕÉ¸ì($$%¥Ğ´ùÍ•½¹¹½¹¹•Ñ¥¹œ€ô™…±Í”ì($$%}‘•Ù¥•ÉÉ½É5•ÍÍ…•Ì¹•É…Í”¡‘•Ù¥•%¤ì($%ô(%ô(%•±Í”¥˜€ …}Í¡ÕÑÑ¥¹½İ¸¤(%ì($%¥˜€¡•¹•É…Ñ¥½¸€„ô€À€˜˜%ÍÕÉÉ•¹Ñ½¹¹•Ñ¥½¸¡‘•Ù¥•%°•¹•É…Ñ¥½¸¤¤($$%±½Í•ÕÉÉ•¹Ñ½¹¹•Ñ¥½¸¡‘•Ù¥•%°•¹•É…Ñ¥½¸¤ì(($%ì($$%ÍÑèé±½­}Õ…É±½¬¡}½¹¹•Ñ¥½¹5ÕÑ•à¤ì($$%}‘•Ù¥•ÉÉ½É5•ÍÍ…•Ím‘•Ù¥•%‘t€ô•ÉÉ½É5•ÍÍ…”¹•µÁÑä ¤€ü|¡0‰U¹­¹½İ¸•ÉÉ½Èˆ¤€è•ÉÉ½É5•ÍÍ…”ì($%ô(%ô((%EÕ•Õ••Ù¥•1¥ÍÑI•™É•Í  ¤ì)ô()Ù½¥¥Í½¹¹•Ñ•Ù¥”¡ÍÑèéİÍÑÉ¥¹}Ù¥•Ü‘•Ù¥•%¤)ì(%ì($%ÍÑèé±½­}Õ…É±½¬¡}½¹¹•Ñ¥½¹5ÕÑ•à¤ì($%…ÕÑ¼¥Ğ€ô}…Õ‘¥½A±…å‰…­½¹¹•Ñ¥½¹Ì¹™¥¹¡ÍÑèéİÍÑÉ¥¹œ¡‘•Ù¥•%¤¤ì($%¥˜€¡¥Ğ€„ô}…Õ‘¥½A±…å‰…­½¹¹•Ñ¥½¹Ì¹•¹ ¤¤($%ì($$%¥Ğ´ùÍ•½¹¹½¹¹•Ñ¥½¸¹±½Í” ¤ì($$%}…Õ‘¥½A±…å‰…­½¹¹•Ñ¥½¹Ì¹•É…Í”¡¥Ğ¤ì($$%}±…ÍÑ½¹¹•Ñ¥½¹±½Í•Q¥µ•Ì¹¥¹Í•ÉÑ}½É}…ÍÍ¥¸¡ÍÑèéİÍÑÉ¥¹œ¡‘•Ù¥•%¤°ÍÑèé¡É½¹¼èéÍÑ•…‘å}±½¬èé¹½Ü ¤¤ì($%ô($%}‘•Ù¥•ÉÉ½É5•ÍÍ…•Ì¹•É…Í”¡ÍÑèéİÍÑÉ¥¹œ¡‘•Ù¥•%¤¤ì(%ô(%EÕ•Õ••Ù¥•1¥ÍÑI•™É•Í  ¤ì)ô()Ù½¥‘‘•Ù¥•A¥­•ÉI½Ü¡ÍÑèéİÍÑÉ¥¹œ½¹ÍĞ˜‘•Ù¥•%°ÍÑèéİÍÑÉ¥¹œ½¹ÍĞ˜‘•Ù¥•9…µ”°‰½½°±¥¡ÑQ¡•µ”¤)ì(%ÕÍ¥¹œ¹…µ•ÍÁ…”İ¥¹ÉĞèé]¥¹‘½İÌèéU$èéa…µ°èé5•‘¥„ì((%‰½½°½¹¹•Ñ¥¹œ€ô™…±Í”ì(%‰½½°½¹¹•Ñ•€ô™…±Í”ì(%ÍÑèéİÍÑÉ¥¹œ•ÉÉ½É5•ÍÍ…”ì(%ì($%ÍÑèé±½­}Õ…É±½¬¡}½¹¹•Ñ¥½¹5ÕÑ•à¤ì($%…ÕÑ¼½¹¹•Ñ¥½¸€ô}…Õ‘¥½A±…å‰…­½¹¹•Ñ¥½¹Ì¹™¥¹¡‘•Ù¥•%¤ì($%½¹¹•Ñ¥¹œ€ô½¹¹•Ñ¥½¸€„ô}…Õ‘¥½A±…å‰…­½¹¹•Ñ¥½¹Ì¹•¹ ¤€˜˜½¹¹•Ñ¥½¸´ùÍ•½¹¹½¹¹•Ñ¥¹œì($$¼¼U$ÍÑ…ÑÕÌ¥Ì‘•É¥Ù•™É½´Ñ¡”½µÁ±•Ñ•½¹¹•Ñ¥½¸½Á•É…Ñ¥½¸¸Ù½¥($$¼¼ÅÕ•Éå¥¹œÑ¡”]¥¹IP…Õ‘¥¼½‰©•Ğµ•É•±äÑ¼É•Á…¥¹ĞÑ¡”ÕÍÑ½´Á¥­•È¸($%½¹¹•Ñ•€ô½¹¹•Ñ¥½¸€„ô}…Õ‘¥½A±…å‰…­½¹¹•Ñ¥½¹Ì¹•¹ ¤€˜˜€…½¹¹•Ñ¥¹œì($%…ÕÑ¼•ÉÉ½È€ô}‘•Ù¥•ÉÉ½É5•ÍÍ…•Ì¹™¥¹¡‘•Ù¥•%¤ì($%¥˜€¡•ÉÉ½È€„ô}‘•Ù¥•ÉÉ½É5•ÍÍ…•Ì¹•¹ ¤¤($$%•ÉÉ½É5•ÍÍ…”€ô•ÉÉ½È´ùÍ•½¹ì(%ô((%É¥É½Üì(%É½Ü¹5¥¹!•¥¡Ğ Øà¤ì(%É½Ü¹A…‘‘¥¹œ¡ì€à°€Ø°€à°€Øô¤ì(%É½Ü¹½É¹•ÉI…‘¥ÕÌ¡ì€à°€à°€à°€àô¤ì(%É½Ü¹	…­É½Õ¹¡M½±¥‘½±½É	ÉÕÍ ¡±¥¡ÑQ¡•µ”€ü5…­•½±½È ÈĞ°€À°€À°€À¤€è5…­•½±½È ÌÈ°€ÈÔÔ°€ÈÔÔ°€ÈÔÔ¤¤¤ì((%½±Õµ¹•™¥¹¥Ñ¥½¸¥½¹½±Õµ¸ì(%¥½¹½±Õµ¸¹]¥‘Ñ ¡É¥‘1•¹Ñ¡ì€ĞĞ°É¥‘U¹¥ÑQåÁ”èéA¥á•°ô¤ì(%½±Õµ¹•™¥¹¥Ñ¥½¸Ñ•áÑ½±Õµ¸ì(%Ñ•áÑ½±Õµ¸¹]¥‘Ñ ¡É¥‘1•¹Ñ¡ì€Ä°É¥‘U¹¥ÑQåÁ”èéMÑ…Èô¤ì(%½±Õµ¹•™¥¹¥Ñ¥½¸…Ñ¥½¹½±Õµ¸ì(%…Ñ¥½¹½±Õµ¸¹]¥‘Ñ ¡É¥‘1•¹Ñ¡ì€ÄÄÀ°É¥‘U¹¥ÑQåÁ”èéA¥á•°ô¤ì(%É½Ü¹½±Õµ¹•™¥¹¥Ñ¥½¹Ì ¤¹ÁÁ•¹¡¥½¹½±Õµ¸¤ì(%É½Ü¹½±Õµ¹•™¥¹¥Ñ¥½¹Ì ¤¹ÁÁ•¹¡Ñ•áÑ½±Õµ¸¤ì(%É½Ü¹½±Õµ¹•™¥¹¥Ñ¥½¹Ì ¤¹ÁÁ•¹¡…Ñ¥½¹½±Õµ¸¤ì((%½¹Ñ%½¸‘•Ù¥•%½¸ì(%‘•Ù¥•%½¸¹±åÁ ¡0‰qáÜÀÈˆ¤ì(%‘•Ù¥•%½¸¹½¹ÑM¥é” ÈĞ¤ì(%‘•Ù¥•%½¸¹½É•É½Õ¹¡M½±¥‘½±½É	ÉÕÍ ¡5…­•½±½È ÈÔÔ°€À°€ÄÀÌ°€ÄäÈ¤¤¤ì(%‘•Ù¥•%½¸¹!½É¥é½¹Ñ…±±¥¹µ•¹Ğ¡!½É¥é½¹Ñ…±±¥¹µ•¹Ğèé•¹Ñ•È¤ì(%‘•Ù¥•%½¸¹Y•ÉÑ¥…±±¥¹µ•¹Ğ¡Y•ÉÑ¥…±±¥¹µ•¹Ğèé•¹Ñ•È¤ì(%É¥èéM•Ñ½±Õµ¸¡‘•Ù¥•%½¸°€À¤ì(%É½Ü¹¡¥±‘É•¸ ¤¹ÁÁ•¹¡‘•Ù¥•%½¸¤ì((%MÑ…­A…¹•°Ñ•áÑA…¹•°ì(%Ñ•áÑA…¹•°¹Y•ÉÑ¥…±±¥¹µ•¹Ğ¡Y•ÉÑ¥…±±¥¹µ•¹Ğèé•¹Ñ•È¤ì(%Ñ•áÑA…¹•°¹5…É¥¸¡ì€à°€À°€à°€Àô¤ì((%Q•áÑ	±½¬¹…µ”ì(%¹…µ”¹Q•áĞ¡‘•Ù¥•9…µ”¹•µÁÑä ¤€ü|¡0‰U¹­¹½İ¸‘•Ù¥”ˆ¤€è‘•Ù¥•9…µ”¤ì(%¹…µ”¹½¹ÑM¥é” ÄÔ¤ì(%¹…µ”¹½É•É½Õ¹¡É•…Ñ•Q•áÑ	ÉÕÍ ¡±¥¡ÑQ¡•µ”¤¤ì(%¹…µ”¹Q•áÑQÉ¥µµ¥¹œ¡Q•áÑQÉ¥µµ¥¹œèé¡…É…Ñ•É±±¥ÁÍ¥Ì¤ì((%Q•áÑ	±½¬ÍÑ…ÑÕÌì(%ÍÑ…ÑÕÌ¹½¹ÑM¥é” ÄÌ¤ì(%ÍÑ…ÑÕÌ¹½É•É½Õ¹¡É•…Ñ•Q•áÑ	ÉÕÍ ¡±¥¡ÑQ¡•µ”°€ÄÜÔ¤¤ì(%¥˜€¡½¹¹•Ñ¥¹œ¤($%ÍÑ…ÑÕÌ¹Q•áĞ¡|¡0‰½¹¹•Ñ¥¹œˆ¤¤ì(%•±Í”¥˜€¡½¹¹•Ñ•¤($%ÍÑ…ÑÕÌ¹Q•áĞ¡|¡0‰½¹¹•Ñ•ˆ¤¤ì(%•±Í”(%ì($%ÍÑ…ÑÕÌ¹Q•áĞ¡•ÉÉ½É5•ÍÍ…”¹•µÁÑä ¤€ü|¡0‰I•…‘äˆ¤€è•ÉÉ½É5•ÍÍ…”¤ì(%ô((%Ñ•áÑA…¹•°¹¡¥±‘É•¸ ¤¹ÁÁ•¹¡¹…µ”¤ì(%Ñ•áÑA…¹•°¹¡¥±‘É•¸ ¤¹ÁÁ•¹¡ÍÑ…ÑÕÌ¤ì(%É¥èéM•Ñ½±Õµ¸¡Ñ•áÑA…¹•°°€Ä¤ì(%É½Ü¹¡¥±‘É•¸ ¤¹ÁÁ•¹¡Ñ•áÑA…¹•°¤ì((%	ÕÑÑ½¸…Ñ¥½¸ì(%…Ñ¥½¸¹5¥¹]¥‘Ñ  ÄÀĞ¤ì(%…Ñ¥½¸¹A…‘‘¥¹œ¡ì€ÄÈ°€Ø°€ÄÈ°€Øô¤ì(%…Ñ¥½¸¹½¹ÑM¥é” ÄÌ¤ì(%…Ñ¥½¸¹½É¹•ÉI…‘¥ÕÌ¡ì€Ø°€Ø°€Ø°€Øô¤ì(%…Ñ¥½¸¹%Í¹…‰±• …½¹¹•Ñ¥¹œ¤ì(%…Ñ¥½¸¹½¹Ñ•¹Ğ¡İ¥¹ÉĞèé‰½á}Ù…±Õ”¡½¹¹•Ñ•€ü|¡0‰¥Í½¹¹•Ğˆ¤€è½¹¹•Ñ¥¹œ€ü|¡0‰½¹¹•Ñ¥¹œˆ¤€è|¡0‰½¹¹•Ğˆ¤¤¤ì(%¥˜€¡½¹¹•Ñ•¤(%ì($%…Ñ¥½¸¹	…­É½Õ¹¡M½±¥‘½±½É	ÉÕÍ ¡5…­•½±½È ÈÔÔ°€À°€ÄÀÌ°€ÄäÈ¤¤¤ì($%…Ñ¥½¸¹½É•É½Õ¹¡M½±¥‘½±½É	ÉÕÍ ¡5…­•½±½È ÈÔÔ°€ÈÔÔ°€ÈÔÔ°€ÈÔÔ¤¤¤ì(%ô(%•±Í”(%ì($%…Ñ¥½¸¹	…­É½Õ¹¡M½±¥‘½±½É	ÉÕÍ ¡±¥¡ÑQ¡•µ”€ü5…­•½±½È ÌĞ°€À°€À°€À¤€è5…­•½±½È Ğà°€ÈÔÔ°€ÈÔÔ°€ÈÔÔ¤¤¤ì($%…Ñ¥½¸¹½É•É½Õ¹¡É•…Ñ•Q•áÑ	ÉÕÍ ¡±¥¡ÑQ¡•µ”¤¤ì(%ô(%…Ñ¥½¸¹±¥¬¡m‘•Ù¥•%°½¹¹•Ñ•‘t¡½¹ÍĞ…ÕÑ¼˜°½¹ÍĞ…ÕÑ¼˜¤ì($%¥˜€¡½¹¹•Ñ•¤($$%¥Í½¹¹•Ñ•Ù¥”¡‘•Ù¥•%¤ì($%•±Í”($$%½¹¹•Ñ•Ù¥”¡‘•Ù¥•%¤ì(%ô¤ì(%É¥èéM•Ñ½±Õµ¸¡…Ñ¥½¸°€È¤ì(%É½Ü¹¡¥±‘É•¸ ¤¹ÁÁ•¹¡…Ñ¥½¸¤ì((%}‘•Ù¥•1¥ÍÑA…¹•°¹¡¥±‘É•¸ ¤¹ÁÁ•¹¡É½Ü¤ì)ô()Ù½¥I•™É•Í¡•Ù¥•A¥­•È ¤)ì(%¥˜€¡}Í¡ÕÑÑ¥¹½İ¸ñğ€…}‘•Ù¥•1¥ÍÑA…¹•°¤($%É•ÑÕÉ¸ì((%ÍÑèéÙ•Ñ½ÈñÍÑèéÁ…¥ÈñÍÑèéİÍÑÉ¥¹œ°ÍÑèéİÍÑÉ¥¹œøø‘•Ù¥•Ìì(%ì($%ÍÑèé±½­}Õ…É±½¬¡}‘•Ù¥•1¥ÍÑ5ÕÑ•à¤ì($%‘•Ù¥•Ì¹É•Í•ÉÙ”¡}…Ù…¥±…‰±••Ù¥•9…µ•Ì¹Í¥é” ¤¤ì($%™½È€¡½¹ÍĞ…ÕÑ¼˜‘•Ù¥”€è}…Ù…¥±…‰±••Ù¥•9…µ•Ì¤($$%‘•Ù¥•Ì¹ÁÕÍ¡}‰…¬¡‘•Ù¥”¤ì(%ô((%½¹ÍĞ‰½½°±¥¡ÑQ¡•µ”€ô%Í1¥¡ÑQ¡•µ” ¤ì(%}‘•Ù¥•1¥ÍÑA…¹•°¹¡¥±‘É•¸ ¤¹±•…È ¤ì(%¥˜€¡‘•Ù¥•Ì¹•µÁÑä ¤¤(%ì($%Q•áÑ	±½¬•µÁÑäì($%•µÁÑä¹Q•áĞ¡}‘•Ù¥•¹Õµ•É…Ñ¥½¹½µÁ±•Ñ•€ü|¡0‰9¼½µÁ…Ñ¥‰±”…Õ‘¥¼‘•Ù¥•Ì™½Õ¹ˆ¤€è|¡0‰M•…É¡¥¹œ™½È	±Õ•Ñ½½Ñ …Õ‘¥¼‘•Ù¥•Ì¸¸¸ˆ¤¤ì($%•µÁÑä¹½¹ÑM¥é” ÄĞ¤ì($%•µÁÑä¹½É•É½Õ¹¡É•…Ñ•Q•áÑ	ÉÕÍ ¡±¥¡ÑQ¡•µ”°€ÄäÀ¤¤ì($%•µÁÑä¹Q•áÑ]É…ÁÁ¥¹œ¡Q•áÑ]É…ÁÁ¥¹œèé]É…À¤ì($%•µÁÑä¹5…É¥¸¡ì€à°€ÄØ°€à°€ÄØô¤ì($%}‘•Ù¥•1¥ÍÑA…¹•°¹¡¥±‘É•¸ ¤¹ÁÁ•¹¡•µÁÑä¤ì(%ô(%•±Í”(%ì($%™½È€¡½¹ÍĞ…ÕÑ¼˜m‘•Ù¥•%°‘•Ù¥•9…µ•t€è‘•Ù¥•Ì¤($$%‘‘•Ù¥•A¥­•ÉI½Ü¡‘•Ù¥•%°‘•Ù¥•9…µ”°±¥¡ÑQ¡•µ”¤ì(%ô)ô()Ù½¥M•ÑÕÁ•Ù¥•A¥­•È ¤)ì(%ÕÍ¥¹œ¹…µ•ÍÁ…”İ¥¹ÉĞèé]¥¹‘½İÌèéU$èéa…µ°èé5•‘¥„ì((%½¹ÍĞ‰½½°±¥¡ÑQ¡•µ”€ô%Í1¥¡ÑQ¡•µ” ¤ì(%½¹ÍĞ…ÕÑ¼İ…Ñ¡•É•¹•É…Ñ¥½¸€ô€¬­}‘•Ù¥•]…Ñ¡•É•¹•É…Ñ¥½¸ì(%ÑÉä(%ì($%¥˜€¡}‘•Ù¥•]…Ñ¡•È¤($$%}‘•Ù¥•]…Ñ¡•È¹MÑ½À ¤ì(($%ì($$%ÍÑèé±½­}Õ…É±½¬¡}‘•Ù¥•1¥ÍÑ5ÕÑ•à¤ì($$%}…Ù…¥±…‰±••Ù¥•9…µ•Ì¹±•…È ¤ì($%ô($%}‘•Ù¥•¹Õµ•É…Ñ¥½¹½µÁ±•Ñ•€ô™…±Í”ì($%}‘•Ù¥•]…Ñ¡•È€ô•Ù¥•%¹™½Éµ…Ñ¥½¸èéÉ•…Ñ•]…Ñ¡•È¡Õ‘¥½A±…å‰…­½¹¹•Ñ¥½¸èé•Ñ•Ù¥•M•±•Ñ½È ¤¤ì($%}‘•Ù¥•]…Ñ¡•È¹‘‘•¡mİ…Ñ¡•É•¹•É…Ñ¥½¹t¡½¹ÍĞ…ÕÑ¼˜°½¹ÍĞ…ÕÑ¼˜‘•Ù¥”¤ì($$%¥˜€¡}Í¡ÕÑÑ¥¹½İ¸ñğİ…Ñ¡•É•¹•É…Ñ¥½¸€„ô}‘•Ù¥•]…Ñ¡•É•¹•É…Ñ¥½¸¤($$$%É•ÑÕÉ¸ì($$%ì($$$%ÍÑèé±½­}Õ…É±½¬¡}‘•Ù¥•1¥ÍÑ5ÕÑ•à¤ì($$$%}…Ù…¥±…‰±••Ù¥•9…µ•Ì¹¥¹Í•ÉÑ}½É}…ÍÍ¥¸¡ÍÑèéİÍÑÉ¥¹œ¡‘•Ù¥”¹% ¤¤°ÍÑèéİÍÑÉ¥¹œ¡‘•Ù¥”¹9…µ” ¤¤¤ì($$%ô($$%¥˜€¡}‘•Ù¥•A¥­•ÉY¥Í¥‰±”€˜˜%Í]¥¹‘½Ü¡}¡]¹¤¤($$$%A½ÍÑ5•ÍÍ…•\¡}¡]¹°]5}Y%}1%MQ}!9°€À°€À¤ì($%ô¤ì($%}‘•Ù¥•]…Ñ¡•È¹I•µ½Ù•¡mİ…Ñ¡•É•¹•É…Ñ¥½¹t¡½¹ÍĞ…ÕÑ¼˜°½¹ÍĞ…ÕÑ¼˜ÕÁ‘…Ñ”¤ì($$%¥˜€¡}Í¡ÕÑÑ¥¹½İ¸ñğİ…Ñ¡•É•¹•É…Ñ¥½¸€„ô}‘•Ù¥•]…Ñ¡•É•¹•É…Ñ¥½¸¤($$$%É•ÑÕÉ¸ì($$%ì($$$%ÍÑèé±½­}Õ…É±½¬¡}‘•Ù¥•1¥ÍÑ5ÕÑ•à¤ì($$$%}…Ù…¥±…‰±••Ù¥•9…µ•Ì¹•É…Í”¡ÍÑèéİÍÑÉ¥¹œ¡ÕÁ‘…Ñ”¹% ¤¤¤ì($$%ô($$%¥˜€¡}‘•Ù¥•A¥­•ÉY¥Í¥‰±”€˜˜%Í]¥¹‘½Ü¡}¡]¹¤¤($$$%A½ÍÑ5•ÍÍ…•\¡}¡]¹°]5}Y%}1%MQ}!9°€À°€À¤ì($%ô¤ì($%}‘•Ù¥•]…Ñ¡•È¹UÁ‘…Ñ•¡mİ…Ñ¡•É•¹•É…Ñ¥½¹t¡½¹ÍĞ…ÕÑ¼˜°½¹ÍĞ…ÕÑ¼˜¤ì($$%¥˜€¡}Í¡ÕÑÑ¥¹½İ¸ñğİ…Ñ¡•É•¹•É…Ñ¥½¸€„ô}‘•Ù¥•]…Ñ¡•É•¹•É…Ñ¥½¸¤($$$%É•ÑÕÉ¸ì($$%¥˜€¡}‘•Ù¥•A¥­•ÉY¥Í¥‰±”€˜˜%Í]¥¹‘½Ü¡}¡]¹¤¤($$$%A½ÍÑ5•ÍÍ…•\¡}¡]¹°]5}Y%}1%MQ}!9°€À°€À¤ì($%ô¤ì($%}‘•Ù¥•]…Ñ¡•È¹¹Õµ•É…Ñ¥½¹½µÁ±•Ñ•¡mİ…Ñ¡•É•¹•É…Ñ¥½¹t¡½¹ÍĞ…ÕÑ¼˜°½¹ÍĞ…ÕÑ¼˜¤ì($$%¥˜€¡}Í¡ÕÑÑ¥¹½İ¸ñğİ…Ñ¡•É•¹•É…Ñ¥½¸€„ô}‘•Ù¥•]…Ñ¡•É•¹•É…Ñ¥½¸¤($$$%É•ÑÕÉ¸ì($$%}‘•Ù¥•¹Õµ•É…Ñ¥½¹½µÁ±•Ñ•€ôÑÉÕ”ì($$%¥˜€¡}‘•Ù¥•A¥­•ÉY¥Í¥‰±”€˜˜%Í]¥¹‘½Ü¡}¡]¹¤¤($$$%A½ÍÑ5•ÍÍ…•\¡}¡]¹°]5}Y%}1%MQ}!9°€À°€À¤ì($%ô¤ì($%}‘•Ù¥•]…Ñ¡•È¹MÑ…ÉĞ ¤ì(%ô(%…Ñ € ¸¸¸¤(%ì($%}‘•Ù¥•¹Õµ•É…Ñ¥½¹½µÁ±•Ñ•€ôÑÉÕ”ì($%1=}U!Q}aAQ%=8 ¤ì(%ô((%½¹ÍĞ…ÕÑ¼Ñ•áÑ	ÉÕÍ €ôÉ•…Ñ•Q•áÑ	ÉÕÍ ¡±¥¡ÑQ¡•µ”¤ì(%½¹ÍĞ…ÕÑ¼Í•½¹‘…ÉåQ•áÑ	ÉÕÍ €ôÉ•…Ñ•Q•áÑ	ÉÕÍ ¡±¥¡ÑQ¡•µ”°€ÄàÔ¤ì((%½¹Ñ%½¸‰±Õ•Ñ½½Ñ¡%½¸ì(%‰±Õ•Ñ½½Ñ¡%½¸¹±åÁ ¡0‰qáÜÀÈˆ¤ì(%‰±Õ•Ñ½½Ñ¡%½¸¹½¹ÑM¥é” ÈĞ¤ì(%‰±Õ•Ñ½½Ñ¡%½¸¹½É•É½Õ¹¡M½±¥‘½±½É	ÉÕÍ ¡5…­•½±½È ÈÔÔ°€À°€ÄÀÌ°€ÄäÈ¤¤¤ì(%‰±Õ•Ñ½½Ñ¡%½¸¹5…É¥¸¡ì€À°€À°€ÄÀ°€Àô¤ì((%Q•áÑ	±½¬Ñ¥Ñ±”ì(%Ñ¥Ñ±”¹Q•áĞ¡|¡0‰½¹¹•Ğˆ¤¤ì(%Ñ¥Ñ±”¹½¹ÑM¥é” ÈÀ¤ì(%Ñ¥Ñ±”¹½¹Ñ]•¥¡Ğ¡ì€ØÀÀô¤ì(%Ñ¥Ñ±”¹½É•É½Õ¹¡Ñ•áÑ	ÉÕÍ ¤ì((%MÑ…­A…¹•°Ñ¥Ñ±•A…¹•°ì(%Ñ¥Ñ±•A…¹•°¹=É¥•¹Ñ…Ñ¥½¸¡=É¥•¹Ñ…Ñ¥½¸èé!½É¥é½¹Ñ…°¤ì(%Ñ¥Ñ±•A…¹•°¹Y•ÉÑ¥…±±¥¹µ•¹Ğ¡Y•ÉÑ¥…±±¥¹µ•¹Ğèé•¹Ñ•È¤ì(%Ñ¥Ñ±•A…¹•°¹¡¥±‘É•¸ ¤¹ÁÁ•¹¡‰±Õ•Ñ½½Ñ¡%½¸¤ì(%Ñ¥Ñ±•A…¹•°¹¡¥±‘É•¸ ¤¹ÁÁ•¹¡Ñ¥Ñ±”¤ì((%Q•áÑ	±½¬ÍÕ‰Ñ¥Ñ±”ì(%ÍÕ‰Ñ¥Ñ±”¹Q•áĞ¡|¡0‰M•±•Ğ„	±Õ•Ñ½½Ñ …Õ‘¥¼‘•Ù¥”ˆ¤¤ì(%ÍÕ‰Ñ¥Ñ±”¹½¹ÑM¥é” ÄÌ¤ì(%ÍÕ‰Ñ¥Ñ±”¹½É•É½Õ¹¡Í•½¹‘…ÉåQ•áÑ	ÉÕÍ ¤ì(%ÍÕ‰Ñ¥Ñ±”¹5…É¥¸¡ì€À°€Ğ°€À°€Àô¤ì((%}‘•Ù¥•1¥ÍÑA…¹•°€ôMÑ…­A…¹•° ¤ì(%}‘•Ù¥•1¥ÍÑA…¹•°¹MÁ…¥¹œ Ø¤ì((%MÉ½±±Y¥•İ•È‘•Ù¥•MÉ½±°ì(%‘•Ù¥•MÉ½±°¹5…á!•¥¡Ğ ĞÈÀ¤ì(%‘•Ù¥•MÉ½±°¹5…É¥¸¡ì€À°€ÄØ°€À°€ÄØô¤ì(%‘•Ù¥•MÉ½±°¹Y•ÉÑ¥…±MÉ½±±	…ÉY¥Í¥‰¥±¥Ñä¡MÉ½±±	…ÉY¥Í¥‰¥±¥ÑäèéÕÑ¼¤ì(%‘•Ù¥•MÉ½±°¹½¹Ñ•¹Ğ¡}‘•Ù¥•1¥ÍÑA…¹•°¤ì((%	ÕÑÑ½¸Í•ÑÑ¥¹Í	ÕÑÑ½¸ì(%Í•ÑÑ¥¹Í	ÕÑÑ½¸¹½¹Ñ•¹Ğ¡İ¥¹ÉĞèé‰½á}Ù…±Õ”¡|¡0‰	±Õ•Ñ½½Ñ M•ÑÑ¥¹Ìˆ¤¤¤ì(%Í•ÑÑ¥¹Í	ÕÑÑ½¸¹½¹ÑM¥é” ÄÌ¤ì(%Í•ÑÑ¥¹Í	ÕÑÑ½¸¹A…‘‘¥¹œ¡ì€ÄÈ°€Ü°€ÄÈ°€Üô¤ì(%Í•ÑÑ¥¹Í	ÕÑÑ½¸¹½É¹•ÉI…‘¥ÕÌ¡ì€Ø°€Ø°€Ø°€Øô¤ì(%Í•ÑÑ¥¹Í	ÕÑÑ½¸¹	…­É½Õ¹¡M½±¥‘½±½É	ÉÕÍ ¡±¥¡ÑQ¡•µ”€ü5…­•½±½È ÌĞ°€À°€À°€À¤€è5…­•½±½È Ğà°€ÈÔÔ°€ÈÔÔ°€ÈÔÔ¤¤¤ì(%Í•ÑÑ¥¹Í	ÕÑÑ½¸¹½É•É½Õ¹¡Ñ•áÑ	ÉÕÍ ¤ì(%Í•ÑÑ¥¹Í	ÕÑÑ½¸¹±¥¬¡mt¡½¹ÍĞ…ÕÑ¼˜°½¹ÍĞ…ÕÑ¼˜¤ì($%İ¥¹ÉĞèé]¥¹‘½İÌèéMåÍÑ•´èé1…Õ¹¡•Èèé1…Õ¹¡UÉ¥Íå¹Œ¡UÉ¤¡0‰µÌµÍ•ÑÑ¥¹Ìé‰±Õ•Ñ½½Ñ ˆ¤¤ì(%ô¤ì((%	ÕÑÑ½¸…¹•±	ÕÑÑ½¸ì(%…¹•±	ÕÑÑ½¸¹½¹Ñ•¹Ğ¡İ¥¹ÉĞèé‰½á}Ù…±Õ”¡|¡0‰…¹•°ˆ¤¤¤ì(%…¹•±	ÕÑÑ½¸¹½¹ÑM¥é” ÄÌ¤ì(%…¹•±	ÕÑÑ½¸¹½¹Ñ]•¥¡Ğ¡ì€ØÀÀô¤ì(%…¹•±	ÕÑÑ½¸¹A…‘‘¥¹œ¡ì€ÄØ°€Ü°€ÄØ°€Üô¤ì(%…¹•±	ÕÑÑ½¸¹½É¹•ÉI…‘¥ÕÌ¡ì€Ø°€Ø°€Ø°€Øô¤ì(%…¹•±	ÕÑÑ½¸¹	…­É½Õ¹¡M½±¥‘½±½É	ÉÕÍ ¡5…­•½±½È ÈÔÔ°€À°€ÄÀÌ°€ÄäÈ¤¤¤ì(%…¹•±	ÕÑÑ½¸¹½É•É½Õ¹¡M½±¥‘½±½É	ÉÕÍ ¡5…­•½±½È ÈÔÔ°€ÈÔÔ°€ÈÔÔ°€ÈÔÔ¤¤¤ì(%…¹•±	ÕÑÑ½¸¹±¥¬¡mt¡½¹ÍĞ…ÕÑ¼˜°½¹ÍĞ…ÕÑ¼˜¤ì($%}á…µ±•Ù¥•±å½ÕĞ¹!¥‘” ¤ì(%ô¤ì((%MÑ…­A…¹•°™½½Ñ•Èì(%™½½Ñ•È¹=É¥•¹Ñ…Ñ¥½¸¡=É¥•¹Ñ…Ñ¥½¸èé!½É¥é½¹Ñ…°¤ì(%™½½Ñ•È¹!½É¥é½¹Ñ…±±¥¹µ•¹Ğ¡!½É¥é½¹Ñ…±±¥¹µ•¹ĞèéI¥¡Ğ¤ì(%™½½Ñ•È¹MÁ…¥¹œ à¤ì(%™½½Ñ•È¹¡¥±‘É•¸ ¤¹ÁÁ•¹¡Í•ÑÑ¥¹Í	ÕÑÑ½¸¤ì(%™½½Ñ•È¹¡¥±‘É•¸ ¤¹ÁÁ•¹¡…¹•±	ÕÑÑ½¸¤ì((%MÑ…­A…¹•°½¹Ñ•¹Ğì(%½¹Ñ•¹Ğ¹]¥‘Ñ  ĞÈÀ¤ì(%½¹Ñ•¹Ğ¹A…‘‘¥¹œ¡ì€ÈÀ°€Äà°€ÈÀ°€Äàô¤ì(%½¹Ñ•¹Ğ¹¡¥±‘É•¸ ¤¹ÁÁ•¹¡Ñ¥Ñ±•A…¹•°¤ì(%½¹Ñ•¹Ğ¹¡¥±‘É•¸ ¤¹ÁÁ•¹¡ÍÕ‰Ñ¥Ñ±”¤ì(%½¹Ñ•¹Ğ¹¡¥±‘É•¸ ¤¹ÁÁ•¹¡‘•Ù¥•MÉ½±°¤ì(%½¹Ñ•¹Ğ¹¡¥±‘É•¸ ¤¹ÁÁ•¹¡™½½Ñ•È¤ì((%	½É‘•È…Éì(%…É¹	…­É½Õ¹¡É•…Ñ•]¥¸ÄÅMÕÉ™…•	ÉÕÍ ¡±¥¡ÑQ¡•µ”¤¤ì(%…É¹½É¹•ÉI…‘¥ÕÌ¡ì€ÄÈ°€ÄÈ°€ÄÈ°€ÄÈô¤ì(%…É¹	½É‘•É	ÉÕÍ ¡M½±¥‘½±½É	ÉÕÍ ¡±¥¡ÑQ¡•µ”€ü5…­•½±½È äÀ°€ÈÔÔ°€ÈÔÔ°€ÈÔÔ¤€è5…­•½±½È äÀ°€ÈÔÔ°€ÈÔÔ°€ÈÔÔ¤¤¤ì(%…É¹	½É‘•ÉQ¡¥­¹•ÍÌ¡ì€Ä°€Ä°€Ä°€Äô¤ì(%…É¹M¡…‘½Ü¡Q¡•µ•M¡…‘½Ü ¤¤ì(%…É¹¡¥±¡½¹Ñ•¹Ğ¤ì((%±å½ÕĞ™±å½ÕĞì(%™±å½ÕĞ¹M¡½Õ±‘½¹ÍÑÉ…¥¹Q½I½½Ñ	½Õ¹‘Ì¡™…±Í”¤ì(%™±å½ÕĞ¹A±…•µ•¹Ğ¡İ¥¹ÉĞèé]¥¹‘½İÌèéU$èéa…µ°èé½¹ÑÉ½±ÌèéAÉ¥µ¥Ñ¥Ù•Ìèé±å½ÕÑA±…•µ•¹Ñ5½‘”èéQ½À¤ì(%™±å½ÕĞ¹½¹Ñ•¹Ğ¡…É¤ì(%™±å½ÕĞ¹±½Í•¡mt¡½¹ÍĞ…ÕÑ¼˜°½¹ÍĞ…ÕÑ¼˜¤ì($%}‘•Ù¥•A¥­•ÉY¥Í¥‰±”€ô™…±Í”ì($%M¡½İ]¥¹‘½Ü¡}¡]¹°M]}!%¤ì(%ô¤ì((%}á…µ±•Ù¥•±å½ÕĞ€ô™±å½ÕĞì)ô()Ù½¥M•ÑÕÁMÙ%½¸ ¤)ì(%…ÕÑ¼¡I•Ì€ô¥¹‘I•Í½ÕÉ•\¡}¡%¹ÍĞ°5-%9QIM=UI\ Ä¤°0‰MYˆ¤ì(%%1}MQ}1MQ}II=I}%}9U10¡¡I•Ì¤ì((%…ÕÑ¼Í¥é”€ôM¥é•½™I•Í½ÕÉ”¡}¡%¹ÍĞ°¡I•Ì¤ì(%%1}MQ}1MQ}II=I}%¡Í¥é”€ôô€À¤ì((%…ÕÑ¼¡I•Í…Ñ„€ô1½…‘I•Í½ÕÉ”¡}¡%¹ÍĞ°¡I•Ì¤ì(%%1}MQ}1MQ}II=I}%}9U10¡¡I•Í…Ñ„¤ì((%…ÕÑ¼ÍÙ…Ñ„€ôÉ•¥¹Ñ•ÉÁÉ•Ñ}…ÍĞñ½¹ÍĞ¡…È¨ø¡1½­I•Í½ÕÉ”¡¡I•Í…Ñ„¤¤ì(%%1}MQ}%}9U11}11=¡ÍÙ…Ñ„¤ì((%½¹ÍĞÍÑèéÍÑÉ¥¹}Ù¥•ÜÍÙœ¡ÍÙ…Ñ„°Í¥é”¤ì(%½¹ÍĞ¥¹Ğİ¥‘Ñ €ô•ÑMåÍÑ•µ5•ÑÉ¥Ì¡M5}aM5%=8¤°¡•¥¡Ğ€ô•ÑMåÍÑ•µ5•ÑÉ¥Ì¡M5}eM5%=8¤ì((%}¡%½¹1¥¡Ğ€ôMÙQ½¡%½¸¡ÍÙœ°İ¥‘Ñ °¡•¥¡Ğ°ì€À°€À°€À°€Äô¤ì(%}¡%½¹…É¬€ôMÙQ½¡%½¸¡ÍÙœ°İ¥‘Ñ °¡•¥¡Ğ°ì€Ä°€Ä°€Ä°€Äô¤ì)ô()Ù½¥UÁ‘…Ñ•9½Ñ¥™å%½¸ ¤)ì(%]=IÙ…±Õ”€ô€À°‰Y…±Õ”€ôÍ¥é•½˜¡Ù…±Õ”¤ì(%1=}%}]%8ÌÉ}II=H¡I••ÑY…±Õ•\¡!-e}UII9Q}UMH°1Hˆ¡M½™Ñİ…É•q5¥É½Í½™Ñq]¥¹‘½İÍqÕÉÉ•¹ÑY•ÉÍ¥½¹qQ¡•µ•ÍqA•ÉÍ½¹…±¥é”¤ˆ°0‰MåÍÑ•µUÍ•Í1¥¡ÑQ¡•µ”ˆ°II}IQ}I}]=I°¹Õ±±ÁÑÈ°€™Ù…±Õ”°€™‰Y…±Õ”¤¤ì(%}¹¥¹¡%½¸€ôÙ…±Õ”€„ô€À€ü}¡%½¹1¥¡Ğ€è}¡%½¹…É¬ì((%¥˜€ …M¡•±±}9½Ñ¥™å%½¹\¡9%5}5=%d°€™}¹¥¤¤(%ì($%¥˜€¡M¡•±±}9½Ñ¥™å%½¹\¡9%5}°€™}¹¥¤¤($%ì($$%%1}MQ}%}]%8ÌÉ}	==1}1M¡M¡•±±}9½Ñ¥™å%½¹\¡9%5}MQYIM%=8°€™}¹¥¤¤ì($%ô($%•±Í”($%ì($$%1=}1MQ}II=H ¤ì($%ô(%ô)ô
+	menu.Items().Append(settingsItem);
+	menu.Items().Append(exitItem);
+	ApplyWin11MenuStyle(menu, lightTheme);
+	menu.Opened([](const auto& sender, const auto&) {
+		auto menuItems = sender.as<MenuFlyout>().Items();
+		auto itemsCount = menuItems.Size();
+		if (itemsCount > 0)
+		{
+			menuItems.GetAt(itemsCount - 1).Focus(g_menuFocusState);
+		}
+		g_menuFocusState = FocusState::Unfocused;
+	});
+	menu.Closed([](const auto&, const auto&) {
+		ShowWindow(g_hWnd, SW_HIDE);
+	});
+
+	g_xamlMenu = menu;
+}
+
+winrt::fire_and_forget ConnectDevice(std::wstring deviceId)
+{
+	// DeviceWatcher callbacks can run outside the XAML apartment. Recreate the
+	// device on the UI apartment before starting the audio connection, matching
+	// the object flow used by the original DevicePicker implementation.
+	auto uiContext = winrt::apartment_context();
+	try
+	{
+		auto device = co_await DeviceInformation::CreateFromIdAsync(deviceId);
+		co_await uiContext;
+		if (g_shuttingDown)
+			co_return;
+		if (device)
+		{
+			ConnectDevice(device);
+			co_return;
+		}
+	}
+	catch (winrt::hresult_error const& ex)
+	{
+		if (g_shuttingDown)
+			co_return;
+
+		std::wstring errorMessage = ex.message().c_str();
+		errorMessage += L" (0x";
+		wchar_t errorCode[9]{};
+		swprintf_s(errorCode, L"%08X", static_cast<uint32_t>(ex.code()));
+		errorMessage += errorCode;
+		errorMessage += L")";
+		{
+			std::lock_guard lock(g_connectionMutex);
+			g_deviceErrorMessages[deviceId] = std::move(errorMessage);
+		}
+		QueueDeviceListRefresh();
+		LOG_CAUGHT_EXCEPTION();
+		co_return;
+	}
+	catch (...)
+	{
+		if (g_shuttingDown)
+			co_return;
+	}
+
+	{
+		std::lock_guard lock(g_connectionMutex);
+		g_deviceErrorMessages[deviceId] = _(L"Unknown error");
+	}
+	QueueDeviceListRefresh();
+}
+
+winrt::fire_and_forget ConnectDevice(DeviceInformation device)
+{
+	// The original project performed the complete StartAsync/OpenAsync sequence
+	// from the picker UI apartment. Preserve that behavior while the custom UI
+	// remains responsible only for displaying device rows.
+	auto uiContext = winrt::apartment_context();
+	const auto deviceId = std::wstring(device.Id());
+	{
+		std::lock_guard lock(g_connectionMutex);
+		g_deviceErrorMessages.erase(deviceId);
+	}
+	QueueDeviceListRefresh();
+
+	{
+		std::lock_guard lock(g_connectionMutex);
+		auto existing = g_audioPlaybackConnections.find(deviceId);
+		if (existing != g_audioPlaybackConnections.end())
+		{
+			if (existing->second.Connecting)
+				co_return;
+			if (existing->second.Connection.State() == AudioPlaybackConnectionState::Opened)
+				co_return;
+		}
+		if (existing != g_audioPlaybackConnections.end())
+		{
+			existing->second.Connection.Close();
+			g_audioPlaybackConnections.erase(existing);
+			g_lastConnectionCloseTimes.insert_or_assign(deviceId, std::chrono::steady_clock::now());
+		}
+	}
+
+	// Closing AudioPlaybackConnection only begins releasing the underlying A2DP
+	// transport. Recreating it immediately can reuse a half-closed Windows
+	// Bluetooth session which reports Opened but never carries audio.
+	std::chrono::milliseconds releaseDelay{};
+	{
+		std::lock_guard lock(g_connectionMutex);
+		auto lastClose = g_lastConnectionCloseTimes.find(deviceId);
+		if (lastClose != g_lastConnectionCloseTimes.end())
+		{
+			const auto elapsed = std::chrono::steady_clock::now() - lastClose->second;
+			if (elapsed < CONNECTION_RELEASE_COOLDOWN)
+				releaseDelay = std::chrono::duration_cast<std::chrono::milliseconds>(CONNECTION_RELEASE_COOLDOWN - elapsed);
+		}
+	}
+	if (releaseDelay.count() > 0)
+	{
+		co_await winrt::resume_after(releaseDelay);
+		co_await uiContext;
+		if (g_shuttingDown)
+			co_return;
+	}
+
+	bool success = false;
+	std::wstring errorMessage;
+	AudioPlaybackConnection connection = nullptr;
+	uint64_t generation = 0;
+
+	try
+	{
+		connection = AudioPlaybackConnection::TryCreateFromId(device.Id());
+		if (!connection)
+		{
+			errorMessage = _(L"Unknown error");
+		}
+		else
+		{
+			generation = ++g_nextConnectionGeneration;
+			{
+				std::lock_guard lock(g_connectionMutex);
+				g_audioPlaybackConnections.insert_or_assign(deviceId, AudioPlaybackConnectionEntry{
+					connection, generation, true
+				});
+			}
+			QueueDeviceListRefresh();
+
+			connection.StateChanged([deviceId, generation](const auto& sender, const auto&) {
+				if (sender.State() == AudioPlaybackConnectionState::Closed)
+					QueueConnectionStateChanged(deviceId, generation);
+			});
+
+			// StartAsync is tied to this connection instance. Every newly created
+			// connection must be enabled before it is opened.
+			co_await connection.StartAsync();
+			co_await uiContext;
+			if (g_shuttingDown)
+				co_return;
+			auto result = co_await connection.OpenAsync();
+			co_await uiContext;
+			if (g_shuttingDown)
+				co_return;
+
+			switch (result.Status())
+			{
+			case AudioPlaybackConnectionOpenResultStatus::Success:
+				success = IsCurrentConnection(deviceId, generation) &&
+					connection.State() == AudioPlaybackConnectionState::Opened;
+				break;
+			case AudioPlaybackConnectionOpenResultStatus::RequestTimedOut:
+				success = false;
+				errorMessage = _(L"The request timed out");
+				break;
+			case AudioPlaybackConnectionOpenResultStatus::DeniedBySystem:
+				success = false;
+				errorMessage = _(L"The operation was denied by the system");
+				break;
+			case AudioPlaybackConnectionOpenResultStatus::UnknownFailure:
+				success = false;
+				{
+					const auto extendedError = result.ExtendedError();
+					LOG_HR(extendedError);
+					wchar_t errorCode[16]{};
+					swprintf_s(errorCode, L" (0x%08X)", static_cast<uint32_t>(extendedError));
+					errorMessage = _(L"Unknown error");
+					errorMessage += errorCode;
+				}
+				break;
+			}
+		}
+	}
+	catch (winrt::hresult_error const& ex)
+	{
+		success = false;
+		errorMessage.resize(64);
+		while (1)
+		{
+			auto result = swprintf(errorMessage.data(), errorMessage.size(), L"%s (0x%08X)", ex.message().c_str(), static_cast<uint32_t>(ex.code()));
+			if (result < 0)
+				errorMessage.resize(errorMessage.size() * 2);
+			else
+			{
+				errorMessage.resize(result);
+				break;
+			}
+		}
+		LOG_CAUGHT_EXCEPTION();
+	}
+	catch (...)
+	{
+		success = false;
+		errorMessage = _(L"Unknown error");
+		LOG_CAUGHT_EXCEPTION();
+	}
+
+	if (success && IsCurrentConnection(deviceId, generation))
+	{
+		bool primeConnection = false;
+		{
+			std::lock_guard lock(g_connectionMutex);
+			primeConnection = g_primedDevices.insert(deviceId).second;
+		}
+
+		// Windows can acknowledge the first A2DP sink connection after process
+		// startup without negotiating a working audio stream. A close/cooldown/open
+		// cycle is the reliable recovery documented by this project, so perform it
+		// automatically once per device instead of reporting a silent connection.
+		if (primeConnection)
+		{
+			CloseCurrentConnection(deviceId, generation);
+			// Keep the existing "Connecting" row visible during the cooldown so the
+			// user cannot start a second overlapping connection attempt.
+			ConnectDevice(device);
+			co_return;
+		}
+
+		{
+			std::lock_guard lock(g_connectionMutex);
+			auto it = g_audioPlaybackConnections.find(deviceId);
+			if (it == g_audioPlaybackConnections.end())
+				co_return;
+			it->second.Connecting = false;
+			g_deviceErrorMessages.erase(deviceId);
+		}
+	}
+	else if (!g_shuttingDown)
+	{
+		if (generation != 0 && IsCurrentConnection(deviceId, generation))
+			CloseCurrentConnection(deviceId, generation);
+
+		{
+			std::lock_guard lock(g_connectionMutex);
+			g_deviceErrorMessages[deviceId] = errorMessage.empty() ? _(L"Unknown error") : errorMessage;
+		}
+	}
+
+	QueueDeviceListRefresh();
+}
+
+void DisconnectDevice(std::wstring_view deviceId)
+{
+	{
+		std::lock_guard lock(g_connectionMutex);
+		auto it = g_audioPlaybackConnections.find(std::wstring(deviceId));
+		if (it != g_audioPlaybackConnections.end())
+		{
+			it->second.Connection.Close();
+			g_audioPlaybackConnections.erase(it);
+			g_lastConnectionCloseTimes.insert_or_assign(std::wstring(deviceId), std::chrono::steady_clock::now());
+		}
+		g_deviceErrorMessages.erase(std::wstring(deviceId));
+	}
+	QueueDeviceListRefresh();
+}
+
+void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& deviceName, bool lightTheme)
+{
+	using namespace winrt::Windows::UI::Xaml::Media;
+
+	bool connecting = false;
+	bool connected = false;
+	std::wstring errorMessage;
+	{
+		std::lock_guard lock(g_connectionMutex);
+		auto connection = g_audioPlaybackConnections.find(deviceId);
+		connecting = connection != g_audioPlaybackConnections.end() && connection->second.Connecting;
+		// UI status is derived from the completed connection operation. Avoid
+		// querying the WinRT audio object merely to repaint the custom picker.
+		connected = connection != g_audioPlaybackConnections.end() && !connecting;
+		auto error = g_deviceErrorMessages.find(deviceId);
+		if (error != g_deviceErrorMessages.end())
+			errorMessage = error->second;
+	}
+
+	Grid row;
+	row.MinHeight(68);
+	row.Padding({ 8, 6, 8, 6 });
+	row.CornerRadius({ 8, 8, 8, 8 });
+	row.Background(SolidColorBrush(lightTheme ? MakeColor(24, 0, 0, 0) : MakeColor(32, 255, 255, 255)));
+
+	ColumnDefinition iconColumn;
+	iconColumn.Width(GridLength{ 44, GridUnitType::Pixel });
+	ColumnDefinition textColumn;
+	textColumn.Width(GridLength{ 1, GridUnitType::Star });
+	ColumnDefinition actionColumn;
+	actionColumn.Width(GridLength{ 110, GridUnitType::Pixel });
+	row.ColumnDefinitions().Append(iconColumn);
+	row.ColumnDefinitions().Append(textColumn);
+	row.ColumnDefinitions().Append(actionColumn);
+
+	FontIcon deviceIcon;
+	deviceIcon.Glyph(L"\xE702");
+	deviceIcon.FontSize(24);
+	deviceIcon.Foreground(SolidColorBrush(MakeColor(255, 0, 103, 192)));
+	deviceIcon.HorizontalAlignment(HorizontalAlignment::Center);
+	deviceIcon.VerticalAlignment(VerticalAlignment::Center);
+	Grid::SetColumn(deviceIcon, 0);
+	row.Children().Append(deviceIcon);
+
+	StackPanel textPanel;
+	textPanel.VerticalAlignment(VerticalAlignment::Center);
+	textPanel.Margin({ 8, 0, 8, 0 });
+
+	TextBlock name;
+	name.Text(deviceName.empty() ? _(L"Unknown device") : deviceName);
+	name.FontSize(15);
+	name.Foreground(CreateTextBrush(lightTheme));
+	name.TextTrimming(TextTrimming::CharacterEllipsis);
+
+	TextBlock status;
+	status.FontSize(13);
+	status.Foreground(CreateTextBrush(lightTheme, 175));
+	if (connecting)
+		status.Text(_(L"Connecting"));
+	else if (connected)
+		status.Text(_(L"Connected"));
+	else
+	{
+		status.Text(errorMessage.empty() ? _(L"Ready") : errorMessage);
+	}
+
+	textPanel.Children().Append(name);
+	textPanel.Children().Append(status);
+	Grid::SetColumn(textPanel, 1);
+	row.Children().Append(textPanel);
+
+	Button action;
+	action.MinWidth(104);
+	action.Padding({ 12, 6, 12, 6 });
+	action.FontSize(13);
+	action.CornerRadius({ 6, 6, 6, 6 });
+	action.IsEnabled(!connecting);
+	action.Content(winrt::box_value(connected ? _(L"Disconnect") : connecting ? _(L"Connecting") : _(L"Connect")));
+	if (connected)
+	{
+		action.Background(SolidColorBrush(MakeColor(255, 0, 103, 192)));
+		action.Foreground(SolidColorBrush(MakeColor(255, 255, 255, 255)));
+	}
+	else
+	{
+		action.Background(SolidColorBrush(lightTheme ? MakeColor(34, 0, 0, 0) : MakeColor(48, 255, 255, 255)));
+		action.Foreground(CreateTextBrush(lightTheme));
+	}
+	action.Click([deviceId, connected](const auto&, const auto&) {
+		if (connected)
+			DisconnectDevice(deviceId);
+		else
+			ConnectDevice(deviceId);
+	});
+	Grid::SetColumn(action, 2);
+	row.Children().Append(action);
+
+	g_deviceListPanel.Children().Append(row);
+}
+
+void RefreshDevicePicker()
+{
+	if (g_shuttingDown || !g_deviceListPanel)
+		return;
+
+	std::vector<std::pair<std::wstring, std::wstring>> devices;
+	{
+		std::lock_guard lock(g_deviceListMutex);
+		devices.reserve(g_availableDeviceNames.size());
+		for (const auto& device : g_availableDeviceNames)
+			devices.push_back(device);
+	}
+
+	const bool lightTheme = IsLightTheme();
+	g_deviceListPanel.Children().Clear();
+	if (devices.empty())
+	{
+		TextBlock empty;
+		empty.Text(g_deviceEnumerationCompleted ? _(L"No compatible audio devices found") : _(L"Searching for Bluetooth audio devices..."));
+		empty.FontSize(14);
+		empty.Foreground(CreateTextBrush(lightTheme, 190));
+		empty.TextWrapping(TextWrapping::Wrap);
+		empty.Margin({ 8, 16, 8, 16 });
+		g_deviceListPanel.Children().Append(empty);
+	}
+	else
+	{
+		for (const auto& [deviceId, deviceName] : devices)
+			AddDevicePickerRow(deviceId, deviceName, lightTheme);
+	}
+}
+
+void SetupDevicePicker()
+{
+	using namespace winrt::Windows::UI::Xaml::Media;
+
+	const bool lightTheme = IsLightTheme();
+	const auto watcherGeneration = ++g_deviceWatcherGeneration;
+	try
+	{
+		if (g_deviceWatcher)
+			g_deviceWatcher.Stop();
+
+		{
+			std::lock_guard lock(g_deviceListMutex);
+			g_availableDeviceNames.clear();
+		}
+		g_deviceEnumerationCompleted = false;
+		g_deviceWatcher = DeviceInformation::CreateWatcher(AudioPlaybackConnection::GetDeviceSelector());
+		g_deviceWatcher.Added([watcherGeneration](const auto&, const auto& device) {
+			if (g_shuttingDown || watcherGeneration != g_deviceWatcherGeneration)
+				return;
+			{
+				std::lock_guard lock(g_deviceListMutex);
+				g_availableDeviceNames.insert_or_assign(std::wstring(device.Id()), std::wstring(device.Name()));
+			}
+			if (g_devicePickerVisible && IsWindow(g_hWnd))
+				PostMessageW(g_hWnd, WM_DEVICE_LIST_CHANGED, 0, 0);
+		});
+		g_deviceWatcher.Removed([watcherGeneration](const auto&, const auto& update) {
+			if (g_shuttingDown || watcherGeneration != g_deviceWatcherGeneration)
+				return;
+			{
+				std::lock_guard lock(g_deviceListMutex);
+				g_availableDeviceNames.erase(std::wstring(update.Id()));
+			}
+			if (g_devicePickerVisible && IsWindow(g_hWnd))
+				PostMessageW(g_hWnd, WM_DEVICE_LIST_CHANGED, 0, 0);
+		});
+		g_deviceWatcher.Updated([watcherGeneration](const auto&, const auto&) {
+			if (g_shuttingDown || watcherGeneration != g_deviceWatcherGeneration)
+				return;
+			if (g_devicePickerVisible && IsWindow(g_hWnd))
+				PostMessageW(g_hWnd, WM_DEVICE_LIST_CHANGED, 0, 0);
+		});
+		g_deviceWatcher.EnumerationCompleted([watcherGeneration](const auto&, const auto&) {
+			if (g_shuttingDown || watcherGeneration != g_deviceWatcherGeneration)
+				return;
+			g_deviceEnumerationCompleted = true;
+			if (g_devicePickerVisible && IsWindow(g_hWnd))
+				PostMessageW(g_hWnd, WM_DEVICE_LIST_CHANGED, 0, 0);
+		});
+		g_deviceWatcher.Start();
+	}
+	catch (...)
+	{
+		g_deviceEnumerationCompleted = true;
+		LOG_CAUGHT_EXCEPTION();
+	}
+
+	const auto textBrush = CreateTextBrush(lightTheme);
+	const auto secondaryTextBrush = CreateTextBrush(lightTheme, 185);
+
+	FontIcon bluetoothIcon;
+	bluetoothIcon.Glyph(L"\xE702");
+	bluetoothIcon.FontSize(24);
+	bluetoothIcon.Foreground(SolidColorBrush(MakeColor(255, 0, 103, 192)));
+	bluetoothIcon.Margin({ 0, 0, 10, 0 });
+
+	TextBlock title;
+	title.Text(_(L"Connect"));
+	title.FontSize(20);
+	title.FontWeight({ 600 });
+	title.Foreground(textBrush);
+
+	StackPanel titlePanel;
+	titlePanel.Orientation(Orientation::Horizontal);
+	titlePanel.VerticalAlignment(VerticalAlignment::Center);
+	titlePanel.Children().Append(bluetoothIcon);
+	titlePanel.Children().Append(title);
+
+	TextBlock subtitle;
+	subtitle.Text(_(L"Select a Bluetooth audio device"));
+	subtitle.FontSize(13);
+	subtitle.Foreground(secondaryTextBrush);
+	subtitle.Margin({ 0, 4, 0, 0 });
+
+	g_deviceListPanel = StackPanel();
+	g_deviceListPanel.Spacing(6);
+
+	ScrollViewer deviceScroll;
+	deviceScroll.MaxHeight(420);
+	deviceScroll.Margin({ 0, 16, 0, 16 });
+	deviceScroll.VerticalScrollBarVisibility(ScrollBarVisibility::Auto);
+	deviceScroll.Content(g_deviceListPanel);
+
+	Button settingsButton;
+	settingsButton.Content(winrt::box_value(_(L"Bluetooth Settings")));
+	settingsButton.FontSize(13);
+	settingsButton.Padding({ 12, 7, 12, 7 });
+	settingsButton.CornerRadius({ 6, 6, 6, 6 });
+	settingsButton.Background(SolidColorBrush(lightTheme ? MakeColor(34, 0, 0, 0) : MakeColor(48, 255, 255, 255)));
+	settingsButton.Foreground(textBrush);
+	settingsButton.Click([](const auto&, const auto&) {
+		winrt::Windows::System::Launcher::LaunchUriAsync(Uri(L"ms-settings:bluetooth"));
+	});
+
+	Button cancelButton;
+	cancelButton.Content(winrt::box_value(_(L"Cancel")));
+	cancelButton.FontSize(13);
+	cancelButton.FontWeight({ 600 });
+	cancelButton.Padding({ 16, 7, 16, 7 });
+	cancelButton.CornerRadius({ 6, 6, 6, 6 });
+	cancelButton.Background(SolidColorBrush(MakeColor(255, 0, 103, 192)));
+	cancelButton.Foreground(SolidColorBrush(MakeColor(255, 255, 255, 255)));
+	cancelButton.Click([](const auto&, const auto&) {
+		g_xamlDeviceFlyout.Hide();
+	});
+
+	StackPanel footer;
+	footer.Orientation(Orientation::Horizontal);
+	footer.HorizontalAlignment(HorizontalAlignment::Right);
+	footer.Spacing(8);
+	footer.Children().Append(settingsButton);
+	footer.Children().Append(cancelButton);
+
+	StackPanel content;
+	content.Width(420);
+	content.Padding({ 20, 18, 20, 18 });
+	content.Children().Append(titlePanel);
+	content.Children().Append(subtitle);
+	content.Children().Append(deviceScroll);
+	content.Children().Append(footer);
+
+	Border card;
+	card.Background(CreateWin11SurfaceBrush(lightTheme));
+	card.CornerRadius({ 12, 12, 12, 12 });
+	card.BorderBrush(SolidColorBrush(lightTheme ? MakeColor(90, 255, 255, 255) : MakeColor(90, 255, 255, 255)));
+	card.BorderThickness({ 1, 1, 1, 1 });
+	card.Shadow(ThemeShadow());
+	card.Child(content);
+
+	Flyout flyout;
+	flyout.ShouldConstrainToRootBounds(false);
+	flyout.Placement(winrt::Windows::UI::Xaml::Controls::Primitives::FlyoutPlacementMode::Top);
+	flyout.Content(card);
+	flyout.Closed([](const auto&, const auto&) {
+		g_devicePickerVisible = false;
+		ShowWindow(g_hWnd, SW_HIDE);
+	});
+
+	g_xamlDeviceFlyout = flyout;
+}
+
+void SetupSvgIcon()
+{
+	auto hRes = FindResourceW(g_hInst, MAKEINTRESOURCEW(1), L"SVG");
+	FAIL_FAST_LAST_ERROR_IF_NULL(hRes);
+
+	auto size = SizeofResource(g_hInst, hRes);
+	FAIL_FAST_LAST_ERROR_IF(size == 0);
+
+	auto hResData = LoadResource(g_hInst, hRes);
+	FAIL_FAST_LAST_ERROR_IF_NULL(hResData);
+
+	auto svgData = reinterpret_cast<const char*>(LockResource(hResData));
+	FAIL_FAST_IF_NULL_ALLOC(svgData);
+
+	const std::string_view svg(svgData, size);
+	const int width = GetSystemMetrics(SM_CXSMICON), height = GetSystemMetrics(SM_CYSMICON);
+
+	g_hIconLight = SvgTohIcon(svg, width, height, { 0, 0, 0, 1 });
+	g_hIconDark = SvgTohIcon(svg, width, height, { 1, 1, 1, 1 });
+}
+
+void UpdateNotifyIcon()
+{
+	DWORD value = 0, cbValue = sizeof(value);
+	LOG_IF_WIN32_ERROR(RegGetValueW(HKEY_CURRENT_USER, LR"(Software\Microsoft\Windows\CurrentVersion\Themes\Personalize)", L"SystemUsesLightTheme", RRF_RT_REG_DWORD, nullptr, &value, &cbValue));
+	g_nid.hIcon = value != 0 ? g_hIconLight : g_hIconDark;
+
+	if (!Shell_NotifyIconW(NIM_MODIFY, &g_nid))
+	{
+		if (Shell_NotifyIconW(NIM_ADD, &g_nid))
+		{
+			FAIL_FAST_IF_WIN32_BOOL_FALSE(Shell_NotifyIconW(NIM_SETVERSION, &g_nid));
+		}
+		else
+		{
+			LOG_LAST_ERROR();
+		}
+	}
+}
