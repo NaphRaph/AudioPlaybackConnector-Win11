@@ -53,7 +53,7 @@ Right-click the notification-area icon to open Bluetooth settings or exit the ap
 
 ### Connected, but there is no audio
 
-Disconnect the phone in AudioPlaybackConnector, then connect it once more.
+The first connection to each device is automatically reopened once after a short delay to avoid a Windows Bluetooth startup race. If a device still connects without audio, disconnect it in AudioPlaybackConnector, wait two seconds, then connect it once more.
 
 ### Connection error, or still no audio after reconnecting
 
@@ -91,9 +91,9 @@ Restore NuGet packages, then build `AudioPlaybackConnector.sln` in the `Release`
 
 The app uses C++/WinRT and the Windows `AudioPlaybackConnection` API. Bluetooth codec negotiation and audio decoding are handled by the Windows Bluetooth stack; the app does not select SBC, AAC, aptX or LDAC directly.
 
-## Known limitation
+## Connection reliability
 
-If **Reconnect on next start** is disabled, the first manual connection after restarting the app may occasionally connect without audio. Disconnecting and connecting once more restores playback. If it does not, restart the PC's Bluetooth as described above.
+Windows can occasionally report an A2DP sink connection as open before its audio transport is ready, especially on the first connection after startup. This build automatically performs one clean reconnect per device and enforces a short release delay before rapid reconnection. If audio is still silent after that recovery, restart the PC's Bluetooth as described above.
 
 ## License and acknowledgments
 
