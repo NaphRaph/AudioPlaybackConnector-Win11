@@ -61,7 +61,7 @@ English, Simplified Chinese and Traditional Chinese are selected automatically f
 
 ### Connected, but there is no audio
 
-The first connection to each device is automatically reopened once after a short delay to avoid a Windows Bluetooth startup race. If a device still connects without audio, disconnect it in AudioPlaybackConnector, wait two seconds, then connect it once more.
+On the first connection to each device, the app starts the Windows A2DP sink and briefly waits for the Bluetooth service to stabilize before opening the connection. It opens the connection only once, so a phone that is already playing is not interrupted by an automatic disconnect/reconnect cycle. If a device still connects without audio, disconnect it in AudioPlaybackConnector, wait two seconds, then connect it once more.
 
 ### Connection error, or still no audio after reconnecting
 
@@ -101,7 +101,7 @@ The app uses C++/WinRT and the Windows `AudioPlaybackConnection` API. Bluetooth 
 
 ## Connection reliability
 
-Windows can occasionally report an A2DP sink connection as open before its audio transport is ready, especially on the first connection after startup. This build automatically performs one clean reconnect per device and enforces a short release delay before rapid reconnection. If audio is still silent after that recovery, restart the PC's Bluetooth as described above.
+Windows can occasionally report an A2DP sink connection as open before its audio transport is ready, especially on the first connection after startup. This build briefly warms up the sink service before the first open and enforces a short release delay before a manual rapid reconnection. It does not automatically close a successful connection, which preserves an A2DP stream that was already playing on the phone. If audio is still silent after that recovery, restart the PC's Bluetooth as described above.
 
 ## License and acknowledgments
 

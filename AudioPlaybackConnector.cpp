@@ -677,8 +677,28 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			// connection must be enabled before it is opened.
 			co_await connection.StartAsync();
 			co_await uiContext;
-			if (g_shuttingDown)
+			if (g_shuttingDown || !IsCurrentConnection(deviceId, generation))
 				co_return;
+
+			bool warmupConnection = false;
+			{
+				std::lock_guard lock(g_connectionMutex);
+				warmupConnection = g_warmedDevices.find(deviceId) == g_warmedDevices.end();
+			}
+
+			// On a cold Windows Bluetooth stack, opening immediately after StartAsync
+			// can produce an apparently connected A2DP session with no audio. Give the
+			// sink service time to settle before the first open, but open only once:
+			// closing a successful connection interrupts phones that are already playing.
+			if (warmupConnection)
+			{
+				AppendLog(L"Warming up first connection without interrupting source audio: " + deviceId);
+				co_await winrt::resume_after(FIRST_CONNECTION_WARMUP_DELAY);
+				co_await uiContext;
+				if (g_shuttingDown || !IsCurrentConnection(deviceId, generation))
+					co_return;
+			}
+
 			auto result = co_await connection.OpenAsync();
 			co_await uiContext;
 			if (g_shuttingDown)
@@ -740,28 +760,9 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 
 	if (success && IsCurrentConnection(deviceId, generation))
 	{
-		bool primeConnection = false;
 		{
 			std::lock_guard lock(g_connectionMutex);
-			primeConnection = g_primedDevices.insert(deviceId).second;
-		}
-
-		// Windows can acknowledge the first A2DP sink connection after process
-		// startup without negotiating a working audio stream. A close/cooldown/open
-		// cycle is the reliable recovery documented by this project, so perform it
-		// automatically once per device instead of reporting a silent connection.
-		if (primeConnection)
-		{
-			AppendLog(L"Priming first connection: " + deviceId);
-			CloseCurrentConnection(deviceId, generation);
-			// Keep the existing "Connecting" row visible during the cooldown so the
-			// user cannot start a second overlapping connection attempt.
-			ConnectDevice(device);
-			co_return;
-		}
-
-		{
-			std::lock_guard lock(g_connectionMutex);
+			g_warmedDevices.insert(deviceId);
 			auto it = g_audioPlaybackConnections.find(deviceId);
 			if (it == g_audioPlaybackConnections.end())
 				co_return;
