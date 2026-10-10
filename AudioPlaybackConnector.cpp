@@ -461,6 +461,7 @@ void SetupFlyout()
 	stackPanel.Children().Append(button);
 
 	Border card;
+	card.RequestedTheme(lightTheme ? ElementTheme::Light : ElementTheme::Dark);
 	card.Background(CreateWin11SurfaceBrush(lightTheme));
 	card.CornerRadius({ 12, 12, 12, 12 });
 	card.BorderBrush(SolidColorBrush(lightTheme ? MakeColor(90, 255, 255, 255) : MakeColor(90, 255, 255, 255)));
@@ -1178,6 +1179,7 @@ void SetupDevicePicker()
 	content.Children().Append(footer);
 
 	Border card;
+	card.RequestedTheme(lightTheme ? ElementTheme::Light : ElementTheme::Dark);
 	card.Background(CreateWin11SurfaceBrush(lightTheme));
 	card.CornerRadius({ 12, 12, 12, 12 });
 	card.BorderBrush(SolidColorBrush(lightTheme ? MakeColor(90, 255, 255, 255) : MakeColor(90, 255, 255, 255)));
