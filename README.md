@@ -61,7 +61,7 @@ English, Simplified Chinese and Traditional Chinese are selected automatically f
 
 ### Connected, but there is no audio
 
-On the first connection to each device, the app starts the Windows A2DP sink and briefly waits for the Bluetooth service to stabilize before opening the connection. It opens the connection only once, so a phone that is already playing is not interrupted by an automatic disconnect/reconnect cycle. If a device still connects without audio, disconnect it in AudioPlaybackConnector, wait two seconds, then connect it once more.
+The app follows the documented Windows sequence by calling `OpenAsync()` immediately after `StartAsync()`, without an extra first-connection delay or an automatic disconnect. If a device reports connected but remains silent, click **Repair audio**. This closes only that device's A2DP connection, waits three seconds for Windows to release the transport, and reconnects it.
 
 ### Connection error, or still no audio after reconnecting
 
@@ -101,7 +101,7 @@ The app uses C++/WinRT and the Windows `AudioPlaybackConnection` API. Bluetooth 
 
 ## Connection reliability
 
-Windows can occasionally report an A2DP sink connection as open before its audio transport is ready, especially on the first connection after startup. This build briefly warms up the sink service before the first open and enforces a short release delay before a manual rapid reconnection. It does not automatically close a successful connection, which preserves an A2DP stream that was already playing on the phone. If audio is still silent after that recovery, restart the PC's Bluetooth as described above.
+Windows can occasionally report an A2DP sink connection as open before its audio transport is actually carrying audio. This build uses the documented single-open lifecycle and never automatically closes a successful connection. The **Repair audio** action provides an explicit, per-device close/wait/reconnect recovery without silently interrupting a healthy stream. If audio is still silent after that recovery, restart the PC's Bluetooth as described above.
 
 ## License and acknowledgments
 

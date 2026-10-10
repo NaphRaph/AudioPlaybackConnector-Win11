@@ -8,6 +8,7 @@ winrt::fire_and_forget ConnectDevice(std::wstring);
 winrt::fire_and_forget ConnectDevice(DeviceInformation);
 void RefreshDevicePicker();
 void DisconnectDevice(std::wstring_view);
+winrt::fire_and_forget RepairDeviceAudio(std::wstring);
 void SetupDevicePicker();
 void SetupSvgIcon();
 void UpdateNotifyIcon();
@@ -65,6 +66,24 @@ void ApplyWin11MenuStyle(MenuFlyout& menu, bool lightTheme)
 	presenterStyle.Setters().Append(Setter(Control::CornerRadiusProperty(),
 		winrt::box_value(CornerRadius{ 10, 10, 10, 10 })));
 	menu.MenuFlyoutPresenterStyle(presenterStyle);
+}
+
+void ApplyTransparentFlyoutStyle(Flyout& flyout)
+{
+	using namespace winrt::Windows::UI::Xaml;
+	using namespace winrt::Windows::UI::Xaml::Controls;
+	using namespace winrt::Windows::UI::Xaml::Media;
+
+	Style presenterStyle;
+	presenterStyle.TargetType(winrt::xaml_typename<FlyoutPresenter>());
+	auto transparent = SolidColorBrush(MakeColor(0, 0, 0, 0));
+	presenterStyle.Setters().Append(Setter(Control::BackgroundProperty(), winrt::box_value(transparent)));
+	presenterStyle.Setters().Append(Setter(Control::BorderBrushProperty(), winrt::box_value(transparent)));
+	presenterStyle.Setters().Append(Setter(Control::BorderThicknessProperty(),
+		winrt::box_value(Thickness{ 0, 0, 0, 0 })));
+	presenterStyle.Setters().Append(Setter(Control::PaddingProperty(),
+		winrt::box_value(Thickness{ 0, 0, 0, 0 })));
+	flyout.FlyoutPresenterStyle(presenterStyle);
 }
 
 bool IsCurrentConnection(std::wstring_view deviceId, uint64_t generation)
@@ -452,6 +471,7 @@ void SetupFlyout()
 	Flyout flyout;
 	flyout.ShouldConstrainToRootBounds(false);
 	flyout.Content(card);
+	ApplyTransparentFlyoutStyle(flyout);
 
 	g_xamlFlyout = flyout;
 }
@@ -680,25 +700,9 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			if (g_shuttingDown || !IsCurrentConnection(deviceId, generation))
 				co_return;
 
-			bool warmupConnection = false;
-			{
-				std::lock_guard lock(g_connectionMutex);
-				warmupConnection = g_warmedDevices.find(deviceId) == g_warmedDevices.end();
-			}
-
-			// On a cold Windows Bluetooth stack, opening immediately after StartAsync
-			// can produce an apparently connected A2DP session with no audio. Give the
-			// sink service time to settle before the first open, but open only once:
-			// closing a successful connection interrupts phones that are already playing.
-			if (warmupConnection)
-			{
-				AppendLog(L"Warming up first connection without interrupting source audio: " + deviceId);
-				co_await winrt::resume_after(FIRST_CONNECTION_WARMUP_DELAY);
-				co_await uiContext;
-				if (g_shuttingDown || !IsCurrentConnection(deviceId, generation))
-					co_return;
-			}
-
+			// Open immediately after StartAsync, as required by the documented
+			// AudioPlaybackConnection lifecycle. An arbitrary delay here can leave
+			// an already-playing source waiting on a half-open A2DP transport.
 			auto result = co_await connection.OpenAsync();
 			co_await uiContext;
 			if (g_shuttingDown)
@@ -762,7 +766,6 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 	{
 		{
 			std::lock_guard lock(g_connectionMutex);
-			g_warmedDevices.insert(deviceId);
 			auto it = g_audioPlaybackConnections.find(deviceId);
 			if (it == g_audioPlaybackConnections.end())
 				co_return;
@@ -805,6 +808,40 @@ void DisconnectDevice(std::wstring_view deviceId)
 	QueueDeviceListRefresh();
 }
 
+winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
+{
+	auto uiContext = winrt::apartment_context();
+	AppendLog(L"Audio repair requested: " + deviceId);
+	{
+		std::lock_guard lock(g_connectionMutex);
+		auto it = g_audioPlaybackConnections.find(deviceId);
+		if (it != g_audioPlaybackConnections.end())
+		{
+			it->second.Connection.Close();
+			g_audioPlaybackConnections.erase(it);
+			g_lastConnectionCloseTimes.insert_or_assign(deviceId, std::chrono::steady_clock::now());
+		}
+		g_deviceErrorMessages.erase(deviceId);
+	}
+	QueueDeviceListRefresh();
+
+	// Give Windows enough time to release the old A2DP transport before
+	// recreating the WinRT connection. This is user-triggered so it never
+	// interrupts a healthy stream automatically.
+	co_await winrt::resume_after(AUDIO_REPAIR_RELEASE_DELAY);
+	co_await uiContext;
+	if (g_shuttingDown)
+		co_return;
+
+	{
+		std::lock_guard lock(g_connectionMutex);
+		if (g_audioPlaybackConnections.find(deviceId) != g_audioPlaybackConnections.end())
+			co_return;
+	}
+	AppendLog(L"Audio repair reconnecting: " + deviceId);
+	ConnectDevice(std::move(deviceId));
+}
+
 void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& deviceName, bool lightTheme)
 {
 	using namespace winrt::Windows::UI::Xaml::Media;
@@ -835,7 +872,7 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 	ColumnDefinition textColumn;
 	textColumn.Width(GridLength{ 1, GridUnitType::Star });
 	ColumnDefinition actionColumn;
-	actionColumn.Width(GridLength{ 110, GridUnitType::Pixel });
+	actionColumn.Width(GridLength{ connected ? 190.0 : 110.0, GridUnitType::Pixel });
 	row.ColumnDefinitions().Append(iconColumn);
 	row.ColumnDefinitions().Append(textColumn);
 	row.ColumnDefinitions().Append(actionColumn);
@@ -899,8 +936,35 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 		else
 			ConnectDevice(deviceId);
 	});
-	Grid::SetColumn(action, 2);
-	row.Children().Append(action);
+	if (connected)
+	{
+		Button repair;
+		repair.MinWidth(76);
+		repair.Padding({ 10, 6, 10, 6 });
+		repair.FontSize(13);
+		repair.CornerRadius({ 6, 6, 6, 6 });
+		repair.Content(winrt::box_value(_(L"Repair audio")));
+		repair.Background(SolidColorBrush(lightTheme ? MakeColor(34, 0, 0, 0) : MakeColor(48, 255, 255, 255)));
+		repair.Foreground(CreateTextBrush(lightTheme));
+		repair.Click([deviceId](const auto&, const auto&) {
+			RepairDeviceAudio(deviceId);
+		});
+
+		StackPanel actions;
+		actions.Orientation(Orientation::Horizontal);
+		actions.HorizontalAlignment(HorizontalAlignment::Right);
+		actions.VerticalAlignment(VerticalAlignment::Center);
+		actions.Spacing(6);
+		actions.Children().Append(repair);
+		actions.Children().Append(action);
+		Grid::SetColumn(actions, 2);
+		row.Children().Append(actions);
+	}
+	else
+	{
+		Grid::SetColumn(action, 2);
+		row.Children().Append(action);
+	}
 
 	g_deviceListPanel.Children().Append(row);
 }
@@ -1125,6 +1189,7 @@ void SetupDevicePicker()
 	flyout.ShouldConstrainToRootBounds(false);
 	flyout.Placement(winrt::Windows::UI::Xaml::Controls::Primitives::FlyoutPlacementMode::Top);
 	flyout.Content(card);
+	ApplyTransparentFlyoutStyle(flyout);
 	flyout.Closed([](const auto&, const auto&) {
 		g_devicePickerVisible = false;
 		ShowWindow(g_hWnd, SW_HIDE);
