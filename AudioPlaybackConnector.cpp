@@ -66,6 +66,14 @@ void ApplyWin11MenuStyle(MenuFlyout& menu, bool lightTheme)
 	presenterStyle.Setters().Append(Setter(Control::CornerRadiusProperty(),
 		winrt::box_value(CornerRadius{ 10, 10, 10, 10 })));
 	menu.MenuFlyoutPresenterStyle(presenterStyle);
+
+	// MenuFlyout is hosted in a separate popup window and does not reliably
+	// inherit the theme of our custom surface. Apply it to every item so the
+	// native template resolves normal, pointer-over, pressed, and disabled
+	// foreground resources from the same light/dark theme.
+	const auto itemTheme = lightTheme ? ElementTheme::Light : ElementTheme::Dark;
+	for (const auto& item : menu.Items())
+		item.as<FrameworkElement>().RequestedTheme(itemTheme);
 }
 
 void ApplyTransparentFlyoutStyle(Flyout& flyout)
@@ -480,29 +488,24 @@ void SetupFlyout()
 void SetupMenu()
 {
 	const bool lightTheme = IsLightTheme();
-	auto menuForeground = CreateTextBrush(lightTheme);
 
 	// https://docs.microsoft.com/en-us/windows/uwp/design/style/segoe-ui-symbol-font
 	FontIcon settingsIcon;
 	settingsIcon.Glyph(L"\xE713");
-	settingsIcon.Foreground(menuForeground);
 
 	MenuFlyoutItem settingsItem;
 	settingsItem.Text(_(L"Bluetooth Settings"));
 	settingsItem.Icon(settingsIcon);
-	settingsItem.Foreground(menuForeground);
 	settingsItem.Click([](const auto&, const auto&) {
 		winrt::Windows::System::Launcher::LaunchUriAsync(Uri(L"ms-settings:bluetooth"));
 	});
 
 	FontIcon logIcon;
 	logIcon.Glyph(L"\xE8A5");
-	logIcon.Foreground(menuForeground);
 
 	MenuFlyoutItem logItem;
 	logItem.Text(_(L"Open Logs Folder"));
 	logItem.Icon(logIcon);
-	logItem.Foreground(menuForeground);
 	logItem.Click([](const auto&, const auto&) {
 		try
 		{
@@ -517,12 +520,10 @@ void SetupMenu()
 
 	FontIcon closeIcon;
 	closeIcon.Glyph(L"\xE8BB");
-	closeIcon.Foreground(menuForeground);
 
 	MenuFlyoutItem exitItem;
 	exitItem.Text(_(L"Exit"));
 	exitItem.Icon(closeIcon);
-	exitItem.Foreground(menuForeground);
 	exitItem.Click([](const auto&, const auto&) {
 		bool hasConnections = false;
 		{
