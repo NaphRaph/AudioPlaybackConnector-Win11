@@ -332,6 +332,8 @@
   <ItemGroup>
     <ClInclude Include="AudioPlaybackConnector.h" />
     <ClInclude Include="Direct2DSvg.hpp" />
+	<ClInclude Include="AudioSessionVolume.hpp" />
+	<ClInclude Include="Logging.hpp" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="SettingsUtil.hpp" />

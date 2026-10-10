@@ -15,7 +15,11 @@
 #include <windowsx.h>
 #include <commctrl.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <shobjidl_core.h>
+#include <mmdeviceapi.h>
+#include <audioclient.h>
+#include <audiopolicy.h>
 #include <d2d1_3.h>
 #include <shlwapi.h>
 
@@ -23,12 +27,15 @@
 #include <cstdlib>
 #include <cstdint>
 #include <atomic>
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include <filesystem>
@@ -60,5 +67,8 @@
 #include <winrt/Windows.UI.Xaml.Media.h>
 #include <windows.ui.xaml.hosting.desktopwindowxamlsource.h>
 #include <winrt/Windows.UI.Xaml.Markup.h>
+
+#pragma comment(lib, "Ole32.lib")
+#pragma comment(lib, "Uuid.lib")
 
 #endif //PCH_H

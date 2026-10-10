@@ -8,6 +8,7 @@ winrt::fire_and_forget ConnectDevice(std::wstring);
 winrt::fire_and_forget ConnectDevice(DeviceInformation);
 void RefreshDevicePicker();
 void DisconnectDevice(std::wstring_view);
+winrt::fire_and_forget RepairDeviceAudio(std::wstring);
 void SetupDevicePicker();
 void SetupSvgIcon();
 void UpdateNotifyIcon();
@@ -65,6 +66,32 @@ void ApplyWin11MenuStyle(MenuFlyout& menu, bool lightTheme)
 	presenterStyle.Setters().Append(Setter(Control::CornerRadiusProperty(),
 		winrt::box_value(CornerRadius{ 10, 10, 10, 10 })));
 	menu.MenuFlyoutPresenterStyle(presenterStyle);
+
+	// MenuFlyout is hosted in a separate popup window and does not reliably
+	// inherit the theme of our custom surface. Apply it to every item so the
+	// native template resolves normal, pointer-over, pressed, and disabled
+	// foreground resources from the same light/dark theme.
+	const auto itemTheme = lightTheme ? ElementTheme::Light : ElementTheme::Dark;
+	for (const auto& item : menu.Items())
+		item.as<FrameworkElement>().RequestedTheme(itemTheme);
+}
+
+void ApplyTransparentFlyoutStyle(Flyout& flyout)
+{
+	using namespace winrt::Windows::UI::Xaml;
+	using namespace winrt::Windows::UI::Xaml::Controls;
+	using namespace winrt::Windows::UI::Xaml::Media;
+
+	Style presenterStyle;
+	presenterStyle.TargetType(winrt::xaml_typename<FlyoutPresenter>());
+	auto transparent = SolidColorBrush(MakeColor(0, 0, 0, 0));
+	presenterStyle.Setters().Append(Setter(Control::BackgroundProperty(), winrt::box_value(transparent)));
+	presenterStyle.Setters().Append(Setter(Control::BorderBrushProperty(), winrt::box_value(transparent)));
+	presenterStyle.Setters().Append(Setter(Control::BorderThicknessProperty(),
+		winrt::box_value(Thickness{ 0, 0, 0, 0 })));
+	presenterStyle.Setters().Append(Setter(Control::PaddingProperty(),
+		winrt::box_value(Thickness{ 0, 0, 0, 0 })));
+	flyout.FlyoutPresenterStyle(presenterStyle);
 }
 
 bool IsCurrentConnection(std::wstring_view deviceId, uint64_t generation)
@@ -97,6 +124,7 @@ void CloseCurrentConnection(std::wstring_view deviceId, uint64_t generation)
 
 	it->second.Connection.Close();
 	g_audioPlaybackConnections.erase(it);
+	g_lastConnectionCloseTimes.insert_or_assign(std::wstring(deviceId), std::chrono::steady_clock::now());
 }
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
@@ -109,8 +137,20 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	UNREFERENCED_PARAMETER(nCmdShow);
 
 	g_hInst = hInstance;
+	SetLastError(ERROR_SUCCESS);
+	auto singleInstanceMutex = CreateMutexW(nullptr, FALSE,
+		L"Local\\AudioPlaybackConnector.SingleInstance.2DAAABDD-2402-4023-BC3E-B6E93FAD567B");
+	const auto singleInstanceError = GetLastError();
+	g_singleInstanceMutex.reset(singleInstanceMutex);
+	if (!g_singleInstanceMutex)
+		return EXIT_FAILURE;
+	if (singleInstanceError == ERROR_ALREADY_EXISTS)
+		return EXIT_SUCCESS;
 
 	winrt::init_apartment();
+	LoadSettings();
+	LoadTranslateData();
+	AppendLog(L"Application started");
 
 	bool supported = false;
 	try
@@ -156,7 +196,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	g_xamlCanvas = Canvas();
 	desktopSource.Content(g_xamlCanvas);
 
-	LoadSettings();
 	SetupFlyout();
 	SetupMenu();
 	SetupDevicePicker();
@@ -194,6 +233,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 		if (g_shuttingDown.exchange(true))
 			break;
+		AppendLog(L"Application shutdown requested");
 
 		if (g_deviceWatcher)
 		{
@@ -246,6 +286,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 	case WM_DESTROY:
 		g_shuttingDown = true;
+		AppendLog(L"Application stopped");
 		{
 			std::lock_guard lock(g_connectionMutex);
 			for (const auto& connection : g_audioPlaybackConnections)
@@ -332,10 +373,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			std::lock_guard lock(g_connectionMutex);
 			auto it = g_audioPlaybackConnections.find(stateChanged->deviceId);
 			if (it == g_audioPlaybackConnections.end() ||
-				it->second.Generation != stateChanged->generation ||
-				it->second.Connection.State() != AudioPlaybackConnectionState::Closed)
+				it->second.Generation != stateChanged->generation)
 				break;
 			g_audioPlaybackConnections.erase(it);
+			g_lastConnectionCloseTimes.insert_or_assign(stateChanged->deviceId, std::chrono::steady_clock::now());
+			AppendLog(L"Bluetooth audio connection closed: " + stateChanged->deviceId);
 			QueueDeviceListRefresh();
 		}
 	}
@@ -427,6 +469,7 @@ void SetupFlyout()
 	stackPanel.Children().Append(button);
 
 	Border card;
+	card.RequestedTheme(lightTheme ? ElementTheme::Light : ElementTheme::Dark);
 	card.Background(CreateWin11SurfaceBrush(lightTheme));
 	card.CornerRadius({ 12, 12, 12, 12 });
 	card.BorderBrush(SolidColorBrush(lightTheme ? MakeColor(90, 255, 255, 255) : MakeColor(90, 255, 255, 255)));
@@ -437,6 +480,7 @@ void SetupFlyout()
 	Flyout flyout;
 	flyout.ShouldConstrainToRootBounds(false);
 	flyout.Content(card);
+	ApplyTransparentFlyoutStyle(flyout);
 
 	g_xamlFlyout = flyout;
 }
@@ -454,6 +498,24 @@ void SetupMenu()
 	settingsItem.Icon(settingsIcon);
 	settingsItem.Click([](const auto&, const auto&) {
 		winrt::Windows::System::Launcher::LaunchUriAsync(Uri(L"ms-settings:bluetooth"));
+	});
+
+	FontIcon logIcon;
+	logIcon.Glyph(L"\xE8A5");
+
+	MenuFlyoutItem logItem;
+	logItem.Text(_(L"Open Logs Folder"));
+	logItem.Icon(logIcon);
+	logItem.Click([](const auto&, const auto&) {
+		try
+		{
+			auto path = GetLogDirectory();
+			ShellExecuteW(g_hWnd, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+		}
+		catch (...)
+		{
+			AppendLog(L"Failed to open logs folder");
+		}
 	});
 
 	FontIcon closeIcon;
@@ -493,6 +555,7 @@ void SetupMenu()
 
 	MenuFlyout menu;
 	menu.Items().Append(settingsItem);
+	menu.Items().Append(logItem);
 	menu.Items().Append(exitItem);
 	ApplyWin11MenuStyle(menu, lightTheme);
 	menu.Opened([](const auto& sender, const auto&) {
@@ -568,6 +631,7 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 	// remains responsible only for displaying device rows.
 	auto uiContext = winrt::apartment_context();
 	const auto deviceId = std::wstring(device.Id());
+	AppendLog(L"Connection requested: " + std::wstring(device.Name()) + L" [" + deviceId + L"]");
 	{
 		std::lock_guard lock(g_connectionMutex);
 		g_deviceErrorMessages.erase(deviceId);
@@ -578,17 +642,29 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 		std::lock_guard lock(g_connectionMutex);
 		auto existing = g_audioPlaybackConnections.find(deviceId);
 		if (existing != g_audioPlaybackConnections.end())
+			co_return;
+	}
+
+	// Closing AudioPlaybackConnection only begins releasing the underlying A2DP
+	// transport. Recreating it immediately can reuse a half-closed Windows
+	// Bluetooth session which reports Opened but never carries audio.
+	std::chrono::milliseconds releaseDelay{};
+	{
+		std::lock_guard lock(g_connectionMutex);
+		auto lastClose = g_lastConnectionCloseTimes.find(deviceId);
+		if (lastClose != g_lastConnectionCloseTimes.end())
 		{
-			if (existing->second.Connecting)
-				co_return;
-			if (existing->second.Connection.State() == AudioPlaybackConnectionState::Opened)
-				co_return;
+			const auto elapsed = std::chrono::steady_clock::now() - lastClose->second;
+			if (elapsed < CONNECTION_RELEASE_COOLDOWN)
+				releaseDelay = std::chrono::duration_cast<std::chrono::milliseconds>(CONNECTION_RELEASE_COOLDOWN - elapsed);
 		}
-		if (existing != g_audioPlaybackConnections.end())
-		{
-			existing->second.Connection.Close();
-			g_audioPlaybackConnections.erase(existing);
-		}
+	}
+	if (releaseDelay.count() > 0)
+	{
+		co_await winrt::resume_after(releaseDelay);
+		co_await uiContext;
+		if (g_shuttingDown)
+			co_return;
 	}
 
 	bool success = false;
@@ -623,8 +699,12 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			// connection must be enabled before it is opened.
 			co_await connection.StartAsync();
 			co_await uiContext;
-			if (g_shuttingDown)
+			if (g_shuttingDown || !IsCurrentConnection(deviceId, generation))
 				co_return;
+
+			// Open immediately after StartAsync, as required by the documented
+			// AudioPlaybackConnection lifecycle. An arbitrary delay here can leave
+			// an already-playing source waiting on a half-open A2DP transport.
 			auto result = co_await connection.OpenAsync();
 			co_await uiContext;
 			if (g_shuttingDown)
@@ -633,6 +713,9 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			switch (result.Status())
 			{
 			case AudioPlaybackConnectionOpenResultStatus::Success:
+				// OpenAsync completion is the authoritative result. StateChanged can
+				// arrive slightly later on some Bluetooth stacks, so checking State()
+				// synchronously here can misreport a successful connection as unknown.
 				success = IsCurrentConnection(deviceId, generation);
 				break;
 			case AudioPlaybackConnectionOpenResultStatus::RequestTimedOut:
@@ -691,6 +774,8 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			it->second.Connecting = false;
 			g_deviceErrorMessages.erase(deviceId);
 		}
+		AppendLog(L"Connection opened: " + deviceId);
+		ApplyPlaybackVolume(true);
 	}
 	else if (!g_shuttingDown)
 	{
@@ -701,6 +786,8 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			std::lock_guard lock(g_connectionMutex);
 			g_deviceErrorMessages[deviceId] = errorMessage.empty() ? _(L"Unknown error") : errorMessage;
 		}
+		AppendLog(L"Connection failed: " + deviceId + L"; " +
+			(errorMessage.empty() ? std::wstring(L"Unknown error") : errorMessage));
 	}
 
 	QueueDeviceListRefresh();
@@ -708,6 +795,7 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 
 void DisconnectDevice(std::wstring_view deviceId)
 {
+	AppendLog(L"Disconnect requested: " + std::wstring(deviceId));
 	{
 		std::lock_guard lock(g_connectionMutex);
 		auto it = g_audioPlaybackConnections.find(std::wstring(deviceId));
@@ -715,10 +803,45 @@ void DisconnectDevice(std::wstring_view deviceId)
 		{
 			it->second.Connection.Close();
 			g_audioPlaybackConnections.erase(it);
+			g_lastConnectionCloseTimes.insert_or_assign(std::wstring(deviceId), std::chrono::steady_clock::now());
 		}
 		g_deviceErrorMessages.erase(std::wstring(deviceId));
 	}
 	QueueDeviceListRefresh();
+}
+
+winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
+{
+	auto uiContext = winrt::apartment_context();
+	AppendLog(L"Audio repair requested: " + deviceId);
+	{
+		std::lock_guard lock(g_connectionMutex);
+		auto it = g_audioPlaybackConnections.find(deviceId);
+		if (it != g_audioPlaybackConnections.end())
+		{
+			it->second.Connection.Close();
+			g_audioPlaybackConnections.erase(it);
+			g_lastConnectionCloseTimes.insert_or_assign(deviceId, std::chrono::steady_clock::now());
+		}
+		g_deviceErrorMessages.erase(deviceId);
+	}
+	QueueDeviceListRefresh();
+
+	// Give Windows enough time to release the old A2DP transport before
+	// recreating the WinRT connection. This is user-triggered so it never
+	// interrupts a healthy stream automatically.
+	co_await winrt::resume_after(AUDIO_REPAIR_RELEASE_DELAY);
+	co_await uiContext;
+	if (g_shuttingDown)
+		co_return;
+
+	{
+		std::lock_guard lock(g_connectionMutex);
+		if (g_audioPlaybackConnections.find(deviceId) != g_audioPlaybackConnections.end())
+			co_return;
+	}
+	AppendLog(L"Audio repair reconnecting: " + deviceId);
+	ConnectDevice(std::move(deviceId));
 }
 
 void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& deviceName, bool lightTheme)
@@ -751,7 +874,7 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 	ColumnDefinition textColumn;
 	textColumn.Width(GridLength{ 1, GridUnitType::Star });
 	ColumnDefinition actionColumn;
-	actionColumn.Width(GridLength{ 110, GridUnitType::Pixel });
+	actionColumn.Width(GridLength{ connected ? 190.0 : 110.0, GridUnitType::Pixel });
 	row.ColumnDefinitions().Append(iconColumn);
 	row.ColumnDefinitions().Append(textColumn);
 	row.ColumnDefinitions().Append(actionColumn);
@@ -815,8 +938,35 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 		else
 			ConnectDevice(deviceId);
 	});
-	Grid::SetColumn(action, 2);
-	row.Children().Append(action);
+	if (connected)
+	{
+		Button repair;
+		repair.MinWidth(76);
+		repair.Padding({ 10, 6, 10, 6 });
+		repair.FontSize(13);
+		repair.CornerRadius({ 6, 6, 6, 6 });
+		repair.Content(winrt::box_value(_(L"Repair audio")));
+		repair.Background(SolidColorBrush(lightTheme ? MakeColor(34, 0, 0, 0) : MakeColor(48, 255, 255, 255)));
+		repair.Foreground(CreateTextBrush(lightTheme));
+		repair.Click([deviceId](const auto&, const auto&) {
+			RepairDeviceAudio(deviceId);
+		});
+
+		StackPanel actions;
+		actions.Orientation(Orientation::Horizontal);
+		actions.HorizontalAlignment(HorizontalAlignment::Right);
+		actions.VerticalAlignment(VerticalAlignment::Center);
+		actions.Spacing(6);
+		actions.Children().Append(repair);
+		actions.Children().Append(action);
+		Grid::SetColumn(actions, 2);
+		row.Children().Append(actions);
+	}
+	else
+	{
+		Grid::SetColumn(action, 2);
+		row.Children().Append(action);
+	}
 
 	g_deviceListPanel.Children().Append(row);
 }
@@ -947,6 +1097,49 @@ void SetupDevicePicker()
 	deviceScroll.VerticalScrollBarVisibility(ScrollBarVisibility::Auto);
 	deviceScroll.Content(g_deviceListPanel);
 
+	Grid volumeRow;
+	volumeRow.Margin({ 0, 0, 0, 14 });
+	ColumnDefinition volumeLabelColumn;
+	volumeLabelColumn.Width(GridLength{ 92, GridUnitType::Pixel });
+	ColumnDefinition volumeSliderColumn;
+	volumeSliderColumn.Width(GridLength{ 1, GridUnitType::Star });
+	ColumnDefinition volumeValueColumn;
+	volumeValueColumn.Width(GridLength{ 48, GridUnitType::Pixel });
+	volumeRow.ColumnDefinitions().Append(volumeLabelColumn);
+	volumeRow.ColumnDefinitions().Append(volumeSliderColumn);
+	volumeRow.ColumnDefinitions().Append(volumeValueColumn);
+
+	TextBlock volumeLabel;
+	volumeLabel.Text(_(L"Playback volume"));
+	volumeLabel.VerticalAlignment(VerticalAlignment::Center);
+	volumeLabel.Foreground(textBrush);
+	Grid::SetColumn(volumeLabel, 0);
+	volumeRow.Children().Append(volumeLabel);
+
+	Slider volumeSlider;
+	volumeSlider.Minimum(0);
+	volumeSlider.Maximum(100);
+	volumeSlider.StepFrequency(1);
+	volumeSlider.Value(g_playbackVolume.load() * 100.0);
+	volumeSlider.VerticalAlignment(VerticalAlignment::Center);
+	Grid::SetColumn(volumeSlider, 1);
+	volumeRow.Children().Append(volumeSlider);
+
+	TextBlock volumeValue;
+	volumeValue.Text(std::to_wstring(static_cast<int>(std::lround(g_playbackVolume.load() * 100.0))) + L"%");
+	volumeValue.TextAlignment(TextAlignment::Right);
+	volumeValue.VerticalAlignment(VerticalAlignment::Center);
+	volumeValue.Foreground(secondaryTextBrush);
+	Grid::SetColumn(volumeValue, 2);
+	volumeRow.Children().Append(volumeValue);
+
+	volumeSlider.ValueChanged([volumeValue](const auto& sender, const auto&) {
+		const auto value = sender.as<Slider>().Value();
+		g_playbackVolume.store(std::clamp(value / 100.0, 0.0, 1.0));
+		volumeValue.Text(std::to_wstring(static_cast<int>(std::lround(value))) + L"%");
+		ApplyPlaybackVolume();
+	});
+
 	Button settingsButton;
 	settingsButton.Content(winrt::box_value(_(L"Bluetooth Settings")));
 	settingsButton.FontSize(13);
@@ -982,10 +1175,12 @@ void SetupDevicePicker()
 	content.Padding({ 20, 18, 20, 18 });
 	content.Children().Append(titlePanel);
 	content.Children().Append(subtitle);
+	content.Children().Append(volumeRow);
 	content.Children().Append(deviceScroll);
 	content.Children().Append(footer);
 
 	Border card;
+	card.RequestedTheme(lightTheme ? ElementTheme::Light : ElementTheme::Dark);
 	card.Background(CreateWin11SurfaceBrush(lightTheme));
 	card.CornerRadius({ 12, 12, 12, 12 });
 	card.BorderBrush(SolidColorBrush(lightTheme ? MakeColor(90, 255, 255, 255) : MakeColor(90, 255, 255, 255)));
@@ -997,6 +1192,7 @@ void SetupDevicePicker()
 	flyout.ShouldConstrainToRootBounds(false);
 	flyout.Placement(winrt::Windows::UI::Xaml::Controls::Primitives::FlyoutPlacementMode::Top);
 	flyout.Content(card);
+	ApplyTransparentFlyoutStyle(flyout);
 	flyout.Closed([](const auto&, const auto&) {
 		g_devicePickerVisible = false;
 		ShowWindow(g_hWnd, SW_HIDE);
