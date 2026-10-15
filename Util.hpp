@@ -89,3 +89,14 @@ auto GetModuleFsPath(HMODULE hModule)
 	path.resize(actualSize);
 	return fs::path(path);
 }
+
+fs::path GetAppDataDirectory()
+{
+	PWSTR localAppData = nullptr;
+	winrt::check_hresult(SHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_CREATE, nullptr, &localAppData));
+	fs::path path(localAppData);
+	CoTaskMemFree(localAppData);
+	path /= L"AudioPlaybackConnector";
+	fs::create_directories(path);
+	return path;
+}

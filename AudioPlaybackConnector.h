@@ -17,6 +17,11 @@ constexpr UINT WM_CONNECTION_STATE_CHANGED = WM_APP + 3;
 constexpr UINT WM_DEVICE_LIST_CHANGED = WM_APP + 4;
 constexpr UINT_PTR SHUTDOWN_TIMER_ID = 1;
 constexpr UINT SHUTDOWN_RELEASE_DELAY_MS = 2000;
+constexpr auto CONNECTION_RELEASE_COOLDOWN = std::chrono::milliseconds(1500);
+constexpr int AUDIO_REPAIR_MAX_ATTEMPTS = 3;
+constexpr auto AUDIO_REPAIR_CONNECTION_TIMEOUT = std::chrono::seconds(8);
+constexpr auto AUDIO_REPAIR_HEALTH_TIMEOUT = std::chrono::seconds(5);
+constexpr auto AUDIO_REPAIR_POLL_INTERVAL = std::chrono::milliseconds(250);
 
 struct ConnectionStateChangedMessage
 {
@@ -34,6 +39,7 @@ struct AudioPlaybackConnectionEntry
 HINSTANCE g_hInst;
 HWND g_hWnd;
 HWND g_hWndXaml;
+wil::unique_handle g_singleInstanceMutex;
 Canvas g_xamlCanvas = nullptr;
 Flyout g_xamlFlyout = nullptr;
 Flyout g_xamlDeviceFlyout = nullptr;
@@ -44,8 +50,11 @@ DeviceWatcher g_deviceWatcher = nullptr;
 std::unordered_map<std::wstring, AudioPlaybackConnectionEntry> g_audioPlaybackConnections;
 std::unordered_map<std::wstring, std::wstring> g_deviceErrorMessages;
 std::unordered_map<std::wstring, std::wstring> g_availableDeviceNames;
+std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> g_lastConnectionCloseTimes;
+std::unordered_set<std::wstring> g_repairingDevices;
 std::recursive_mutex g_connectionMutex;
 std::mutex g_deviceListMutex;
+std::mutex g_logMutex;
 HICON g_hIconLight = nullptr;
 HICON g_hIconDark = nullptr;
 NOTIFYICONDATAW g_nid = {
@@ -59,6 +68,7 @@ NOTIFYICONIDENTIFIER g_niid = {
 };
 UINT WM_TASKBAR_CREATED = 0;
 bool g_reconnect = false;
+std::atomic<double> g_playbackVolume = 1.0;
 std::vector<std::wstring> g_lastDevices;
 uint64_t g_nextConnectionGeneration = 0;
 std::atomic_uint64_t g_deviceWatcherGeneration = 0;
@@ -67,6 +77,8 @@ std::atomic_bool g_devicePickerVisible = false;
 std::atomic_bool g_shuttingDown = false;
 
 #include "Util.hpp"
+#include "Logging.hpp"
 #include "I18n.hpp"
 #include "SettingsUtil.hpp"
+#include "AudioSessionVolume.hpp"
 #include "Direct2DSvg.hpp"
