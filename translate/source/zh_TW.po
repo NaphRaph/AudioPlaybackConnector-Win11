@@ -87,6 +87,9 @@ msgstr "中斷連線"
 msgid "Repair audio"
 msgstr "修復聲音"
 
+msgid "Repairing audio"
+msgstr "正在修復"
+
 #: AudioPlaybackConnector.cpp:...
 msgid "Cancel"
 msgstr "取消"

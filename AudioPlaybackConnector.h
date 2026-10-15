@@ -18,7 +18,10 @@ constexpr UINT WM_DEVICE_LIST_CHANGED = WM_APP + 4;
 constexpr UINT_PTR SHUTDOWN_TIMER_ID = 1;
 constexpr UINT SHUTDOWN_RELEASE_DELAY_MS = 2000;
 constexpr auto CONNECTION_RELEASE_COOLDOWN = std::chrono::milliseconds(1500);
-constexpr auto AUDIO_REPAIR_RELEASE_DELAY = std::chrono::milliseconds(3000);
+constexpr int AUDIO_REPAIR_MAX_ATTEMPTS = 3;
+constexpr auto AUDIO_REPAIR_CONNECTION_TIMEOUT = std::chrono::seconds(8);
+constexpr auto AUDIO_REPAIR_HEALTH_TIMEOUT = std::chrono::seconds(5);
+constexpr auto AUDIO_REPAIR_POLL_INTERVAL = std::chrono::milliseconds(250);
 
 struct ConnectionStateChangedMessage
 {
@@ -48,6 +51,7 @@ std::unordered_map<std::wstring, AudioPlaybackConnectionEntry> g_audioPlaybackCo
 std::unordered_map<std::wstring, std::wstring> g_deviceErrorMessages;
 std::unordered_map<std::wstring, std::wstring> g_availableDeviceNames;
 std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> g_lastConnectionCloseTimes;
+std::unordered_set<std::wstring> g_repairingDevices;
 std::recursive_mutex g_connectionMutex;
 std::mutex g_deviceListMutex;
 std::mutex g_logMutex;

@@ -85,6 +85,9 @@ msgstr ""
 msgid "Repair audio"
 msgstr ""
 
+msgid "Repairing audio"
+msgstr ""
+
 #: AudioPlaybackConnector.cpp:...
 msgid "Cancel"
 msgstr ""

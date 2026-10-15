@@ -61,7 +61,7 @@ English, Simplified Chinese and Traditional Chinese are selected automatically f
 
 ### Connected, but there is no audio
 
-The app follows the documented Windows sequence by calling `OpenAsync()` immediately after `StartAsync()`, without an extra first-connection delay or an automatic disconnect. If a device reports connected but remains silent, click **Repair audio**. This closes only that device's A2DP connection, waits three seconds for Windows to release the transport, and reconnects it.
+The app follows the documented Windows sequence by calling `OpenAsync()` immediately after `StartAsync()`, without an extra first-connection delay or an automatic disconnect. If a device reports connected but remains silent, click **Repair audio** once. The app automatically performs up to three device-scoped reconnect attempts with progressively longer release delays, and stops as soon as its Windows audio session becomes active.
 
 ### Connection error, or still no audio after reconnecting
 
@@ -101,7 +101,7 @@ The app uses C++/WinRT and the Windows `AudioPlaybackConnection` API. Bluetooth 
 
 ## Connection reliability
 
-Windows can occasionally report an A2DP sink connection as open before its audio transport is actually carrying audio. This build uses the documented single-open lifecycle and never automatically closes a successful connection. The **Repair audio** action provides an explicit, per-device close/wait/reconnect recovery without silently interrupting a healthy stream. If audio is still silent after that recovery, restart the PC's Bluetooth as described above.
+Windows can occasionally report an A2DP sink connection as open before its audio transport is actually carrying audio. This build uses the documented single-open lifecycle and never automatically closes a successful connection. The user-triggered **Repair audio** action provides a bounded three-attempt recovery sequence for the selected device, checks for an active application audio session after every attempt, and leaves the final connection open if no activity is detected. If audio is still silent after that recovery, restart the PC's Bluetooth as described above.
 
 ## License and acknowledgments
 

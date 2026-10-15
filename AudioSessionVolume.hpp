@@ -1,5 +1,57 @@
 #pragma once
 
+bool IsProcessAudioSessionActive()
+{
+	winrt::com_ptr<IMMDeviceEnumerator> deviceEnumerator;
+	if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+		__uuidof(IMMDeviceEnumerator), deviceEnumerator.put_void())))
+		return false;
+
+	winrt::com_ptr<IMMDeviceCollection> devices;
+	if (FAILED(deviceEnumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, devices.put())))
+		return false;
+
+	UINT deviceCount = 0;
+	devices->GetCount(&deviceCount);
+	for (UINT deviceIndex = 0; deviceIndex < deviceCount; ++deviceIndex)
+	{
+		winrt::com_ptr<IMMDevice> device;
+		if (FAILED(devices->Item(deviceIndex, device.put())))
+			continue;
+
+		winrt::com_ptr<IAudioSessionManager2> sessionManager;
+		if (FAILED(device->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr,
+			sessionManager.put_void())))
+			continue;
+
+		winrt::com_ptr<IAudioSessionEnumerator> sessions;
+		if (FAILED(sessionManager->GetSessionEnumerator(sessions.put())))
+			continue;
+
+		int sessionCount = 0;
+		sessions->GetCount(&sessionCount);
+		for (int sessionIndex = 0; sessionIndex < sessionCount; ++sessionIndex)
+		{
+			winrt::com_ptr<IAudioSessionControl> session;
+			if (FAILED(sessions->GetSession(sessionIndex, session.put())))
+				continue;
+
+			winrt::com_ptr<IAudioSessionControl2> session2;
+			if (FAILED(session->QueryInterface(__uuidof(IAudioSessionControl2), session2.put_void())))
+				continue;
+
+			DWORD processId = 0;
+			if (FAILED(session2->GetProcessId(&processId)) || processId != GetCurrentProcessId())
+				continue;
+
+			AudioSessionState state = AudioSessionStateInactive;
+			if (SUCCEEDED(session->GetState(&state)) && state == AudioSessionStateActive)
+				return true;
+		}
+	}
+	return false;
+}
+
 bool SetProcessAudioSessionVolume(float volume)
 {
 	volume = std::clamp(volume, 0.0f, 1.0f);

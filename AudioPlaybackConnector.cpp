@@ -813,35 +813,102 @@ void DisconnectDevice(std::wstring_view deviceId)
 winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 {
 	auto uiContext = winrt::apartment_context();
-	AppendLog(L"Audio repair requested: " + deviceId);
 	{
 		std::lock_guard lock(g_connectionMutex);
-		auto it = g_audioPlaybackConnections.find(deviceId);
-		if (it != g_audioPlaybackConnections.end())
-		{
-			it->second.Connection.Close();
-			g_audioPlaybackConnections.erase(it);
-			g_lastConnectionCloseTimes.insert_or_assign(deviceId, std::chrono::steady_clock::now());
-		}
-		g_deviceErrorMessages.erase(deviceId);
-	}
-	QueueDeviceListRefresh();
-
-	// Give Windows enough time to release the old A2DP transport before
-	// recreating the WinRT connection. This is user-triggered so it never
-	// interrupts a healthy stream automatically.
-	co_await winrt::resume_after(AUDIO_REPAIR_RELEASE_DELAY);
-	co_await uiContext;
-	if (g_shuttingDown)
-		co_return;
-
-	{
-		std::lock_guard lock(g_connectionMutex);
-		if (g_audioPlaybackConnections.find(deviceId) != g_audioPlaybackConnections.end())
+		if (!g_repairingDevices.insert(deviceId).second)
 			co_return;
 	}
-	AppendLog(L"Audio repair reconnecting: " + deviceId);
-	ConnectDevice(std::move(deviceId));
+	auto repairGuard = wil::scope_exit([deviceId] {
+		{
+			std::lock_guard lock(g_connectionMutex);
+			g_repairingDevices.erase(deviceId);
+		}
+		QueueDeviceListRefresh();
+	});
+
+	AppendLog(L"Audio repair requested: " + deviceId);
+	QueueDeviceListRefresh();
+
+	// Repeated manual repairs have proven able to recover a Windows A2DP
+	// transport that a single reconnect cannot. Automate that bounded sequence,
+	// using longer release delays on later attempts and stopping as soon as this
+	// process owns an active audio session.
+	constexpr std::chrono::milliseconds releaseDelays[AUDIO_REPAIR_MAX_ATTEMPTS] = {
+		std::chrono::seconds(3), std::chrono::seconds(5), std::chrono::seconds(8)
+	};
+
+	try
+	{
+		for (int attempt = 0; attempt < AUDIO_REPAIR_MAX_ATTEMPTS && !g_shuttingDown; ++attempt)
+		{
+			co_await uiContext;
+			{
+				std::lock_guard lock(g_connectionMutex);
+				auto it = g_audioPlaybackConnections.find(deviceId);
+				if (it != g_audioPlaybackConnections.end())
+				{
+					it->second.Connection.Close();
+					g_audioPlaybackConnections.erase(it);
+					g_lastConnectionCloseTimes.insert_or_assign(deviceId, std::chrono::steady_clock::now());
+				}
+				g_deviceErrorMessages.erase(deviceId);
+			}
+			QueueDeviceListRefresh();
+
+			AppendLog(L"Audio repair attempt " + std::to_wstring(attempt + 1) +
+				L"/" + std::to_wstring(AUDIO_REPAIR_MAX_ATTEMPTS) +
+				L", release wait " + std::to_wstring(releaseDelays[attempt].count()) +
+				L" ms: " + deviceId);
+			co_await winrt::resume_after(releaseDelays[attempt]);
+			co_await uiContext;
+			if (g_shuttingDown)
+				co_return;
+
+			ConnectDevice(deviceId);
+
+			bool opened = false;
+			const auto connectionDeadline = std::chrono::steady_clock::now() + AUDIO_REPAIR_CONNECTION_TIMEOUT;
+			while (!g_shuttingDown && std::chrono::steady_clock::now() < connectionDeadline)
+			{
+				co_await winrt::resume_after(AUDIO_REPAIR_POLL_INTERVAL);
+				std::lock_guard lock(g_connectionMutex);
+				auto it = g_audioPlaybackConnections.find(deviceId);
+				opened = it != g_audioPlaybackConnections.end() && !it->second.Connecting;
+				if (opened)
+					break;
+			}
+
+			if (!opened)
+			{
+				AppendLog(L"Audio repair connection did not open on attempt " +
+					std::to_wstring(attempt + 1) + L": " + deviceId);
+				continue;
+			}
+
+			co_await winrt::resume_background();
+			const auto healthDeadline = std::chrono::steady_clock::now() + AUDIO_REPAIR_HEALTH_TIMEOUT;
+			while (!g_shuttingDown && std::chrono::steady_clock::now() < healthDeadline)
+			{
+				if (IsProcessAudioSessionActive())
+				{
+					AppendLog(L"Audio repair detected an active audio session on attempt " +
+						std::to_wstring(attempt + 1) + L": " + deviceId);
+					co_return;
+				}
+				co_await winrt::resume_after(AUDIO_REPAIR_POLL_INTERVAL);
+			}
+
+			AppendLog(L"Audio repair found no active audio session on attempt " +
+				std::to_wstring(attempt + 1) + L": " + deviceId);
+			if (attempt + 1 == AUDIO_REPAIR_MAX_ATTEMPTS)
+				co_return;
+		}
+	}
+	catch (...)
+	{
+		AppendLog(L"Audio repair failed with an exception: " + deviceId);
+		LOG_CAUGHT_EXCEPTION();
+	}
 }
 
 void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& deviceName, bool lightTheme)
@@ -850,11 +917,14 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 
 	bool connecting = false;
 	bool connected = false;
+	bool repairing = false;
 	std::wstring errorMessage;
 	{
 		std::lock_guard lock(g_connectionMutex);
 		auto connection = g_audioPlaybackConnections.find(deviceId);
 		connecting = connection != g_audioPlaybackConnections.end() && connection->second.Connecting;
+		repairing = g_repairingDevices.find(deviceId) != g_repairingDevices.end();
+		connecting = connecting || repairing;
 		// UI status is derived from the completed connection operation. Avoid
 		// querying the WinRT audio object merely to repaint the custom picker.
 		connected = connection != g_audioPlaybackConnections.end() && !connecting;
@@ -901,7 +971,9 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 	TextBlock status;
 	status.FontSize(13);
 	status.Foreground(CreateTextBrush(lightTheme, 175));
-	if (connecting)
+	if (repairing)
+		status.Text(_(L"Repairing audio"));
+	else if (connecting)
 		status.Text(_(L"Connecting"));
 	else if (connected)
 		status.Text(_(L"Connected"));
@@ -921,7 +993,8 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 	action.FontSize(13);
 	action.CornerRadius({ 6, 6, 6, 6 });
 	action.IsEnabled(!connecting);
-	action.Content(winrt::box_value(connected ? _(L"Disconnect") : connecting ? _(L"Connecting") : _(L"Connect")));
+	action.Content(winrt::box_value(connected ? _(L"Disconnect") :
+		repairing ? _(L"Repairing audio") : connecting ? _(L"Connecting") : _(L"Connect")));
 	if (connected)
 	{
 		action.Background(SolidColorBrush(MakeColor(255, 0, 103, 192)));
@@ -945,7 +1018,8 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 		repair.Padding({ 10, 6, 10, 6 });
 		repair.FontSize(13);
 		repair.CornerRadius({ 6, 6, 6, 6 });
-		repair.Content(winrt::box_value(_(L"Repair audio")));
+		repair.IsEnabled(!repairing);
+		repair.Content(winrt::box_value(repairing ? _(L"Repairing audio") : _(L"Repair audio")));
 		repair.Background(SolidColorBrush(lightTheme ? MakeColor(34, 0, 0, 0) : MakeColor(48, 255, 255, 255)));
 		repair.Foreground(CreateTextBrush(lightTheme));
 		repair.Click([deviceId](const auto&, const auto&) {
