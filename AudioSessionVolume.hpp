@@ -1,60 +1,7 @@
 #pragma once
 
-bool IsProcessAudioSessionActive()
+bool GetDefaultRenderEndpoint(winrt::com_ptr<IMMDevice>& device)
 {
-	winrt::com_ptr<IMMDeviceEnumerator> deviceEnumerator;
-	if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
-		__uuidof(IMMDeviceEnumerator), deviceEnumerator.put_void())))
-		return false;
-
-	winrt::com_ptr<IMMDeviceCollection> devices;
-	if (FAILED(deviceEnumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, devices.put())))
-		return false;
-
-	UINT deviceCount = 0;
-	devices->GetCount(&deviceCount);
-	for (UINT deviceIndex = 0; deviceIndex < deviceCount; ++deviceIndex)
-	{
-		winrt::com_ptr<IMMDevice> device;
-		if (FAILED(devices->Item(deviceIndex, device.put())))
-			continue;
-
-		winrt::com_ptr<IAudioSessionManager2> sessionManager;
-		if (FAILED(device->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr,
-			sessionManager.put_void())))
-			continue;
-
-		winrt::com_ptr<IAudioSessionEnumerator> sessions;
-		if (FAILED(sessionManager->GetSessionEnumerator(sessions.put())))
-			continue;
-
-		int sessionCount = 0;
-		sessions->GetCount(&sessionCount);
-		for (int sessionIndex = 0; sessionIndex < sessionCount; ++sessionIndex)
-		{
-			winrt::com_ptr<IAudioSessionControl> session;
-			if (FAILED(sessions->GetSession(sessionIndex, session.put())))
-				continue;
-
-			winrt::com_ptr<IAudioSessionControl2> session2;
-			if (FAILED(session->QueryInterface(__uuidof(IAudioSessionControl2), session2.put_void())))
-				continue;
-
-			DWORD processId = 0;
-			if (FAILED(session2->GetProcessId(&processId)) || processId != GetCurrentProcessId())
-				continue;
-
-			AudioSessionState state = AudioSessionStateInactive;
-			if (SUCCEEDED(session->GetState(&state)) && state == AudioSessionStateActive)
-				return true;
-		}
-	}
-	return false;
-}
-
-bool SetProcessAudioSessionVolume(float volume)
-{
-	volume = std::clamp(volume, 0.0f, 1.0f);
 	winrt::com_ptr<IMMDeviceEnumerator> deviceEnumerator;
 	auto result = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
 		__uuidof(IMMDeviceEnumerator), deviceEnumerator.put_void());
@@ -64,74 +11,143 @@ bool SetProcessAudioSessionVolume(float volume)
 		return false;
 	}
 
-	winrt::com_ptr<IMMDeviceCollection> devices;
-	result = deviceEnumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, devices.put());
+	result = deviceEnumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, device.put());
 	if (FAILED(result))
 	{
-		AppendHresultLog(L"Enumerate audio endpoints failed", result);
+		AppendHresultLog(L"Get default render endpoint failed", result);
+		return false;
+	}
+	return true;
+}
+
+bool GetEndpointIdentityAndVolume(IMMDevice* device, std::wstring& endpointId, float& volume)
+{
+	LPWSTR rawId = nullptr;
+	auto result = device->GetId(&rawId);
+	if (FAILED(result))
+	{
+		AppendHresultLog(L"Get default render endpoint ID failed", result);
+		return false;
+	}
+	auto freeRawId = wil::scope_exit([&rawId] { CoTaskMemFree(rawId); });
+
+	winrt::com_ptr<IAudioEndpointVolume> endpointVolume;
+	result = device->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, nullptr,
+		endpointVolume.put_void());
+	if (FAILED(result))
+	{
+		AppendHresultLog(L"Activate endpoint volume failed", result);
 		return false;
 	}
 
-	UINT deviceCount = 0;
-	devices->GetCount(&deviceCount);
-	bool found = false;
-	for (UINT deviceIndex = 0; deviceIndex < deviceCount; ++deviceIndex)
+	result = endpointVolume->GetMasterVolumeLevelScalar(&volume);
+	if (FAILED(result))
 	{
-		winrt::com_ptr<IMMDevice> device;
-		if (FAILED(devices->Item(deviceIndex, device.put())))
-			continue;
-
-		winrt::com_ptr<IAudioSessionManager2> sessionManager;
-		if (FAILED(device->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr,
-			sessionManager.put_void())))
-			continue;
-
-		winrt::com_ptr<IAudioSessionEnumerator> sessions;
-		if (FAILED(sessionManager->GetSessionEnumerator(sessions.put())))
-			continue;
-
-		int sessionCount = 0;
-		sessions->GetCount(&sessionCount);
-		for (int sessionIndex = 0; sessionIndex < sessionCount; ++sessionIndex)
-		{
-			winrt::com_ptr<IAudioSessionControl> session;
-			if (FAILED(sessions->GetSession(sessionIndex, session.put())))
-				continue;
-
-			winrt::com_ptr<IAudioSessionControl2> session2;
-			if (FAILED(session->QueryInterface(__uuidof(IAudioSessionControl2), session2.put_void())))
-				continue;
-
-			DWORD processId = 0;
-			if (FAILED(session2->GetProcessId(&processId)) || processId != GetCurrentProcessId())
-				continue;
-
-			winrt::com_ptr<ISimpleAudioVolume> sessionVolume;
-			if (FAILED(session->QueryInterface(__uuidof(ISimpleAudioVolume), sessionVolume.put_void())))
-				continue;
-
-			if (SUCCEEDED(sessionVolume->SetMasterVolume(volume, nullptr)))
-				found = true;
-		}
+		AppendHresultLog(L"Read endpoint volume failed", result);
+		return false;
 	}
-	return found;
+
+	endpointId.assign(rawId);
+	volume = std::clamp(volume, 0.0f, 1.0f);
+	return true;
 }
 
-winrt::fire_and_forget ApplyPlaybackVolume(bool retryForNewSession = false)
+void InitializePlaybackVolumeControl()
+{
+	winrt::com_ptr<IMMDevice> device;
+	if (!GetDefaultRenderEndpoint(device))
+		return;
+
+	std::wstring endpointId;
+	float currentVolume = 1.0f;
+	if (!GetEndpointIdentityAndVolume(device.get(), endpointId, currentVolume))
+		return;
+
+	std::lock_guard lock(g_volumeMutex);
+	if (!g_playbackReferenceReady || g_playbackEndpointId != endpointId)
+	{
+		g_playbackEndpointId = std::move(endpointId);
+		g_playbackReferenceVolume = currentVolume;
+		g_playbackReferenceReady = true;
+		AppendLog(L"Playback volume neutral reference captured at " +
+			std::to_wstring(static_cast<int>(std::lround(currentVolume * 100.0f))) + L"%");
+	}
+}
+
+float MapPlaybackVolumeToEndpoint(float controlVolume, float referenceVolume)
+{
+	controlVolume = std::clamp(controlVolume, 0.0f, 1.0f);
+	referenceVolume = std::clamp(referenceVolume, 0.0f, 1.0f);
+	constexpr float neutral = static_cast<float>(DEFAULT_PLAYBACK_VOLUME);
+	if (controlVolume <= neutral)
+		return referenceVolume * (controlVolume / neutral);
+	return referenceVolume + (1.0f - referenceVolume) *
+		((controlVolume - neutral) / (1.0f - neutral));
+}
+
+bool SetDefaultRenderEndpointVolume(float controlVolume, bool allowUnmute)
+{
+	winrt::com_ptr<IMMDevice> device;
+	if (!GetDefaultRenderEndpoint(device))
+		return false;
+
+	std::wstring endpointId;
+	float currentVolume = 1.0f;
+	if (!GetEndpointIdentityAndVolume(device.get(), endpointId, currentVolume))
+		return false;
+
+	float referenceVolume = currentVolume;
+	{
+		std::lock_guard lock(g_volumeMutex);
+		if (!g_playbackReferenceReady || g_playbackEndpointId != endpointId)
+		{
+			g_playbackEndpointId = endpointId;
+			g_playbackReferenceVolume = currentVolume;
+			g_playbackReferenceReady = true;
+			AppendLog(L"Playback output changed; neutral reference captured at " +
+				std::to_wstring(static_cast<int>(std::lround(currentVolume * 100.0f))) + L"%");
+		}
+		referenceVolume = g_playbackReferenceVolume;
+	}
+
+	winrt::com_ptr<IAudioEndpointVolume> endpointVolume;
+	auto result = device->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, nullptr,
+		endpointVolume.put_void());
+	if (FAILED(result))
+	{
+		AppendHresultLog(L"Activate endpoint volume failed", result);
+		return false;
+	}
+
+	const auto targetVolume = MapPlaybackVolumeToEndpoint(controlVolume, referenceVolume);
+	if (allowUnmute && controlVolume > 0.0f)
+	{
+		result = endpointVolume->SetMute(FALSE, nullptr);
+		if (FAILED(result))
+			AppendHresultLog(L"Unmute default render endpoint failed", result);
+	}
+
+	result = endpointVolume->SetMasterVolumeLevelScalar(targetVolume, nullptr);
+	if (FAILED(result))
+	{
+		AppendHresultLog(L"Set endpoint volume failed", result);
+		return false;
+	}
+	return true;
+}
+
+winrt::fire_and_forget ApplyPlaybackVolume(bool logResult = false, bool allowUnmute = false)
 {
 	co_await winrt::resume_background();
-	const auto attempts = retryForNewSession ? 10 : 1;
-	for (int attempt = 0; attempt < attempts && !g_shuttingDown; ++attempt)
+	const auto controlVolume = static_cast<float>(g_playbackVolume.load());
+	if (SetDefaultRenderEndpointVolume(controlVolume, allowUnmute))
 	{
-		if (SetProcessAudioSessionVolume(static_cast<float>(g_playbackVolume.load())))
-		{
-			if (retryForNewSession)
-				AppendLog(L"Applied playback volume to audio session");
-			co_return;
-		}
-		if (attempt + 1 < attempts)
-			co_await winrt::resume_after(std::chrono::milliseconds(250));
+		if (logResult)
+			AppendLog(L"Applied playback volume to the default render endpoint: " +
+				std::to_wstring(static_cast<int>(std::lround(controlVolume * 100.0f))) + L"%");
 	}
-	if (retryForNewSession)
-		AppendLog(L"No application audio session was found for volume control");
+	else if (logResult)
+	{
+		AppendLog(L"Could not apply playback volume to the default render endpoint");
+	}
 }

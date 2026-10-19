@@ -18,10 +18,16 @@ constexpr UINT WM_DEVICE_LIST_CHANGED = WM_APP + 4;
 constexpr UINT_PTR SHUTDOWN_TIMER_ID = 1;
 constexpr UINT SHUTDOWN_RELEASE_DELAY_MS = 2000;
 constexpr auto CONNECTION_RELEASE_COOLDOWN = std::chrono::milliseconds(1500);
+constexpr auto CONNECTION_OPENED_TIMEOUT = std::chrono::seconds(5);
+constexpr auto AUTO_CONNECT_STARTUP_DELAY = std::chrono::seconds(3);
+constexpr auto AUTO_CONNECT_PRIME_HOLD = std::chrono::milliseconds(750);
+constexpr auto AUTO_CONNECT_RELEASE_DELAY = std::chrono::seconds(3);
 constexpr int AUDIO_REPAIR_MAX_ATTEMPTS = 3;
 constexpr auto AUDIO_REPAIR_CONNECTION_TIMEOUT = std::chrono::seconds(8);
-constexpr auto AUDIO_REPAIR_HEALTH_TIMEOUT = std::chrono::seconds(5);
 constexpr auto AUDIO_REPAIR_POLL_INTERVAL = std::chrono::milliseconds(250);
+constexpr auto AUDIO_REPAIR_PRIME_HOLD = std::chrono::milliseconds(750);
+constexpr double DEFAULT_PLAYBACK_VOLUME = 0.5;
+constexpr int VOLUME_CONTROL_VERSION = 2;
 
 struct ConnectionStateChangedMessage
 {
@@ -55,6 +61,7 @@ std::unordered_set<std::wstring> g_repairingDevices;
 std::recursive_mutex g_connectionMutex;
 std::mutex g_deviceListMutex;
 std::mutex g_logMutex;
+std::mutex g_volumeMutex;
 HICON g_hIconLight = nullptr;
 HICON g_hIconDark = nullptr;
 NOTIFYICONDATAW g_nid = {
@@ -68,7 +75,10 @@ NOTIFYICONIDENTIFIER g_niid = {
 };
 UINT WM_TASKBAR_CREATED = 0;
 bool g_reconnect = false;
-std::atomic<double> g_playbackVolume = 1.0;
+std::atomic<double> g_playbackVolume = DEFAULT_PLAYBACK_VOLUME;
+std::wstring g_playbackEndpointId;
+float g_playbackReferenceVolume = 1.0f;
+bool g_playbackReferenceReady = false;
 std::vector<std::wstring> g_lastDevices;
 uint64_t g_nextConnectionGeneration = 0;
 std::atomic_uint64_t g_deviceWatcherGeneration = 0;

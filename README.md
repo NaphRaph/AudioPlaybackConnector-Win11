@@ -17,7 +17,7 @@ Turn a Windows 10/11 PC into a Bluetooth speaker. This app enables the built-in 
 - Connect and disconnect paired phones from the notification area
 - Optional automatic reconnection on the next launch
 - Single-instance operation with support for multiple connected source devices
-- Independent PC-side playback volume control
+- PC-side output volume independent from the phone, with 50% as the neutral level
 - Improved A2DP connection lifecycle for Windows 11
 - Portable single-file executable with no installer
 - Official x86, x64 and ARM64 builds
@@ -51,7 +51,7 @@ SHA-256 checksums are included in `SHA256SUMS.txt` on the Release page.
 
 Right-click the notification-area icon to open Bluetooth settings or exit the app. When exiting, **Reconnect on next start** can remember active devices and reconnect them on the next launch.
 
-The volume slider controls this app's Windows audio session independently from the phone volume and the system speaker volume. The effective output is the combination of all three levels.
+The volume slider now controls the current default Windows render endpoint, so it changes the level actually heard from the headphones or speakers instead of looking for a process-owned session that the Windows Bluetooth sink does not create. Phone and PC volume remain separately adjustable. On the first upgraded launch, the current Windows output level is captured as the normal reference: 50% preserves it, 0–50% attenuates it, and 50–100% uses any remaining endpoint headroom. Windows cannot provide clean gain beyond an endpoint that is already at its hardware maximum.
 
 Settings and diagnostic logs are stored under `%LOCALAPPDATA%\AudioPlaybackConnector`, not beside the executable. An existing `AudioPlaybackConnector.json` beside the executable is migrated automatically.
 
@@ -61,7 +61,7 @@ English, Simplified Chinese and Traditional Chinese are selected automatically f
 
 ### Connected, but there is no audio
 
-The app follows the documented Windows sequence by calling `OpenAsync()` immediately after `StartAsync()`, without an extra first-connection delay or an automatic disconnect. If a device reports connected but remains silent, click **Repair audio** once. The app automatically performs up to three device-scoped reconnect attempts with progressively longer release delays, and stops as soon as its Windows audio session becomes active.
+The app follows the documented Windows `StartAsync()` / `OpenAsync()` sequence and waits for the connection to reach the actual `Opened` audio state. Reconnect-on-start performs one internal warm-up connection, fully releases it, and then creates the final connection to avoid the first A2DP link after boot becoming a silent link. **Repair audio** remains available as a manual fallback and performs up to three progressively delayed reconnects.
 
 ### Connection error, or still no audio after reconnecting
 
@@ -101,7 +101,7 @@ The app uses C++/WinRT and the Windows `AudioPlaybackConnection` API. Bluetooth 
 
 ## Connection reliability
 
-Windows can occasionally report an A2DP sink connection as open before its audio transport is actually carrying audio. This build uses the documented single-open lifecycle and never automatically closes a successful connection. The user-triggered **Repair audio** action provides a bounded three-attempt recovery sequence for the selected device, checks for an active application audio session after every attempt, and leaves the final connection open if no activity is detected. If audio is still silent after that recovery, restart the PC's Bluetooth as described above.
+Windows can accept an A2DP `OpenAsync()` request before the transport reaches the real `Opened` state, and the first open after boot can also produce a link that looks connected but carries no samples. This build no longer treats request acceptance as proof that audio is ready and gives startup auto-reconnect a controlled warm-up cycle. The user-triggered **Repair audio** action retains a bounded three-attempt recovery sequence and leaves the final connection open. If audio is still silent after that recovery, restart the PC's Bluetooth as described above.
 
 ## License and acknowledgments
 

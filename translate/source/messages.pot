@@ -66,6 +66,9 @@ msgstr ""
 msgid "The operation was denied by the system"
 msgstr ""
 
+msgid "The Bluetooth audio channel did not become ready"
+msgstr ""
+
 #: AudioPlaybackConnector.cpp:337
 msgid "Unknown error"
 msgstr ""

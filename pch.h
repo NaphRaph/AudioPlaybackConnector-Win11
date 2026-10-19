@@ -20,6 +20,7 @@
 #include <mmdeviceapi.h>
 #include <audioclient.h>
 #include <audiopolicy.h>
+#include <endpointvolume.h>
 #include <d2d1_3.h>
 #include <shlwapi.h>
 

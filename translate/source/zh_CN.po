@@ -68,6 +68,9 @@ msgstr "请求超时"
 msgid "The operation was denied by the system"
 msgstr "操作被系统拒绝"
 
+msgid "The Bluetooth audio channel did not become ready"
+msgstr "蓝牙音频通道未能就绪"
+
 #: AudioPlaybackConnector.cpp:337
 msgid "Unknown error"
 msgstr "未知错误"

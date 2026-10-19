@@ -6,6 +6,7 @@ void SetupFlyout();
 void SetupMenu();
 winrt::fire_and_forget ConnectDevice(std::wstring);
 winrt::fire_and_forget ConnectDevice(DeviceInformation);
+winrt::fire_and_forget AutoConnectDevice(std::wstring);
 void RefreshDevicePicker();
 void DisconnectDevice(std::wstring_view);
 winrt::fire_and_forget RepairDeviceAudio(std::wstring);
@@ -101,6 +102,48 @@ bool IsCurrentConnection(std::wstring_view deviceId, uint64_t generation)
 	return it != g_audioPlaybackConnections.end() && it->second.Generation == generation;
 }
 
+bool IsCurrentConnectionOpened(std::wstring_view deviceId, uint64_t generation)
+{
+	AudioPlaybackConnection connection = nullptr;
+	{
+		std::lock_guard lock(g_connectionMutex);
+		auto it = g_audioPlaybackConnections.find(std::wstring(deviceId));
+		if (it == g_audioPlaybackConnections.end() || it->second.Generation != generation)
+			return false;
+		connection = it->second.Connection;
+	}
+
+	try
+	{
+		return connection.State() == AudioPlaybackConnectionState::Opened;
+	}
+	catch (...)
+	{
+		LOG_CAUGHT_EXCEPTION();
+		return false;
+	}
+}
+
+winrt::Windows::Foundation::IAsyncOperation<bool> WaitForDeviceConnection(
+	std::wstring deviceId, std::chrono::milliseconds timeout)
+{
+	const auto deadline = std::chrono::steady_clock::now() + timeout;
+	while (!g_shuttingDown && std::chrono::steady_clock::now() < deadline)
+	{
+		{
+			std::lock_guard lock(g_connectionMutex);
+			auto it = g_audioPlaybackConnections.find(deviceId);
+			if (it != g_audioPlaybackConnections.end() && !it->second.Connecting)
+				co_return true;
+			if (it == g_audioPlaybackConnections.end() &&
+				g_deviceErrorMessages.find(deviceId) != g_deviceErrorMessages.end())
+				co_return false;
+		}
+		co_await winrt::resume_after(AUDIO_REPAIR_POLL_INTERVAL);
+	}
+	co_return false;
+}
+
 void QueueConnectionStateChanged(std::wstring deviceId, uint64_t generation)
 {
 	// This callback may run on a non-UI thread. Only post a message here;
@@ -151,6 +194,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	LoadSettings();
 	LoadTranslateData();
 	AppendLog(L"Application started");
+	InitializePlaybackVolumeControl();
+	ApplyPlaybackVolume(true);
 
 	bool supported = false;
 	try
@@ -390,7 +435,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		{
 			for (const auto& i : g_lastDevices)
 			{
-				ConnectDevice(i);
+				AutoConnectDevice(i);
 			}
 			g_lastDevices.clear();
 		}
@@ -713,11 +758,28 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			switch (result.Status())
 			{
 			case AudioPlaybackConnectionOpenResultStatus::Success:
-				// OpenAsync completion is the authoritative result. StateChanged can
-				// arrive slightly later on some Bluetooth stacks, so checking State()
-				// synchronously here can misreport a successful connection as unknown.
-				success = IsCurrentConnection(deviceId, generation);
+			{
+				// OpenAsync success only means Windows accepted the request. On the
+				// affected vivo/Windows combination it can return before the A2DP
+				// transport reaches Opened, which previously produced a false
+				// "Connected" row with no sound. Wait for the actual audio state.
+				const auto stateDeadline =
+					std::chrono::steady_clock::now() + CONNECTION_OPENED_TIMEOUT;
+				while (!g_shuttingDown && IsCurrentConnection(deviceId, generation) &&
+					std::chrono::steady_clock::now() < stateDeadline)
+				{
+					if (IsCurrentConnectionOpened(deviceId, generation))
+					{
+						success = true;
+						break;
+					}
+					co_await winrt::resume_after(AUDIO_REPAIR_POLL_INTERVAL);
+					co_await uiContext;
+				}
+				if (!success)
+					errorMessage = _(L"The Bluetooth audio channel did not become ready");
 				break;
+			}
 			case AudioPlaybackConnectionOpenResultStatus::RequestTimedOut:
 				success = false;
 				errorMessage = _(L"The request timed out");
@@ -793,6 +855,87 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 	QueueDeviceListRefresh();
 }
 
+winrt::fire_and_forget AutoConnectDevice(std::wstring deviceId)
+{
+	auto uiContext = winrt::apartment_context();
+	{
+		std::lock_guard lock(g_connectionMutex);
+		if (!g_repairingDevices.insert(deviceId).second)
+			co_return;
+	}
+	auto autoConnectGuard = wil::scope_exit([deviceId] {
+		{
+			std::lock_guard lock(g_connectionMutex);
+			g_repairingDevices.erase(deviceId);
+		}
+		QueueDeviceListRefresh();
+	});
+
+	AppendLog(L"Automatic connection warm-up started: " + deviceId);
+	QueueDeviceListRefresh();
+
+	try
+	{
+		// Windows may still be bringing Bluetooth and the audio graph online when
+		// this tray application starts during sign-in. Avoid racing those services.
+		co_await winrt::resume_after(AUTO_CONNECT_STARTUP_DELAY);
+		co_await uiContext;
+		if (g_shuttingDown)
+			co_return;
+
+		// The first A2DP open after boot frequently creates a link that the phone
+		// considers connected but that never delivers samples. Use that first open
+		// only to initialise the Windows/phone transport, then release it fully and
+		// make the second open the user-visible connection.
+		ConnectDevice(deviceId);
+		const auto primed = co_await WaitForDeviceConnection(
+			deviceId, std::chrono::duration_cast<std::chrono::milliseconds>(
+				AUDIO_REPAIR_CONNECTION_TIMEOUT));
+		co_await uiContext;
+		if (g_shuttingDown)
+			co_return;
+
+		if (primed)
+			co_await winrt::resume_after(AUTO_CONNECT_PRIME_HOLD);
+		co_await uiContext;
+		if (g_shuttingDown)
+			co_return;
+
+		{
+			std::lock_guard lock(g_connectionMutex);
+			auto it = g_audioPlaybackConnections.find(deviceId);
+			if (it != g_audioPlaybackConnections.end())
+			{
+				it->second.Connection.Close();
+				g_audioPlaybackConnections.erase(it);
+			}
+			g_lastConnectionCloseTimes.insert_or_assign(
+				deviceId, std::chrono::steady_clock::now());
+			g_deviceErrorMessages.erase(deviceId);
+		}
+		QueueDeviceListRefresh();
+
+		AppendLog(L"Automatic connection warm-up complete; waiting for full A2DP release: " +
+			deviceId);
+		co_await winrt::resume_after(AUTO_CONNECT_RELEASE_DELAY);
+		co_await uiContext;
+		if (g_shuttingDown)
+			co_return;
+
+		ConnectDevice(deviceId);
+		const auto connected = co_await WaitForDeviceConnection(
+			deviceId, std::chrono::duration_cast<std::chrono::milliseconds>(
+				AUDIO_REPAIR_CONNECTION_TIMEOUT));
+		AppendLog((connected ? L"Automatic connection completed: " :
+			L"Automatic connection failed: ") + deviceId);
+	}
+	catch (...)
+	{
+		AppendLog(L"Automatic connection failed with an exception: " + deviceId);
+		LOG_CAUGHT_EXCEPTION();
+	}
+}
+
 void DisconnectDevice(std::wstring_view deviceId)
 {
 	AppendLog(L"Disconnect requested: " + std::wstring(deviceId));
@@ -866,17 +1009,9 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 
 			ConnectDevice(deviceId);
 
-			bool opened = false;
-			const auto connectionDeadline = std::chrono::steady_clock::now() + AUDIO_REPAIR_CONNECTION_TIMEOUT;
-			while (!g_shuttingDown && std::chrono::steady_clock::now() < connectionDeadline)
-			{
-				co_await winrt::resume_after(AUDIO_REPAIR_POLL_INTERVAL);
-				std::lock_guard lock(g_connectionMutex);
-				auto it = g_audioPlaybackConnections.find(deviceId);
-				opened = it != g_audioPlaybackConnections.end() && !it->second.Connecting;
-				if (opened)
-					break;
-			}
+			const auto opened = co_await WaitForDeviceConnection(
+				deviceId, std::chrono::duration_cast<std::chrono::milliseconds>(
+					AUDIO_REPAIR_CONNECTION_TIMEOUT));
 
 			if (!opened)
 			{
@@ -885,23 +1020,15 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 				continue;
 			}
 
-			co_await winrt::resume_background();
-			const auto healthDeadline = std::chrono::steady_clock::now() + AUDIO_REPAIR_HEALTH_TIMEOUT;
-			while (!g_shuttingDown && std::chrono::steady_clock::now() < healthDeadline)
+			if (attempt + 1 == AUDIO_REPAIR_MAX_ATTEMPTS)
 			{
-				if (IsProcessAudioSessionActive())
-				{
-					AppendLog(L"Audio repair detected an active audio session on attempt " +
-						std::to_wstring(attempt + 1) + L": " + deviceId);
-					co_return;
-				}
-				co_await winrt::resume_after(AUDIO_REPAIR_POLL_INTERVAL);
+				AppendLog(L"Audio repair completed: " + deviceId);
+				co_return;
 			}
 
-			AppendLog(L"Audio repair found no active audio session on attempt " +
+			AppendLog(L"Audio repair primed A2DP transport on attempt " +
 				std::to_wstring(attempt + 1) + L": " + deviceId);
-			if (attempt + 1 == AUDIO_REPAIR_MAX_ATTEMPTS)
-				co_return;
+			co_await winrt::resume_after(AUDIO_REPAIR_PRIME_HOLD);
 		}
 	}
 	catch (...)
@@ -1211,7 +1338,7 @@ void SetupDevicePicker()
 		const auto value = sender.as<Slider>().Value();
 		g_playbackVolume.store(std::clamp(value / 100.0, 0.0, 1.0));
 		volumeValue.Text(std::to_wstring(static_cast<int>(std::lround(value))) + L"%");
-		ApplyPlaybackVolume();
+		ApplyPlaybackVolume(false, true);
 	});
 
 	Button settingsButton;

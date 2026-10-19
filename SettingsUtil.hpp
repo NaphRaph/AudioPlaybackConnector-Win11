@@ -37,7 +37,10 @@ void MigrateLegacySettings()
 void DefaultSettings()
 {
 	g_reconnect = false;
-	g_playbackVolume = 1.0;
+	g_playbackVolume = DEFAULT_PLAYBACK_VOLUME;
+	g_playbackEndpointId.clear();
+	g_playbackReferenceVolume = 1.0f;
+	g_playbackReferenceReady = false;
 	g_lastDevices.clear();
 }
 
@@ -66,8 +69,21 @@ void LoadSettings()
 		std::wstring utf16 = Utf8ToUtf16(string);
 		auto jsonObj = JsonObject::Parse(utf16);
 		g_reconnect = jsonObj.Lookup(L"reconnect").GetBoolean();
-		if (jsonObj.HasKey(L"playbackVolume"))
+		// Version 1 tried to control a process-owned audio session. The Bluetooth
+		// sink is rendered by Windows instead, so that value never affected sound.
+		// Do not carry its misleading 100% value into the endpoint-volume model.
+		const auto volumeControlVersion = jsonObj.HasKey(L"volumeControlVersion") ?
+			static_cast<int>(jsonObj.Lookup(L"volumeControlVersion").GetNumber()) : 1;
+		if (volumeControlVersion >= VOLUME_CONTROL_VERSION && jsonObj.HasKey(L"playbackVolume"))
 			g_playbackVolume = std::clamp(jsonObj.Lookup(L"playbackVolume").GetNumber(), 0.0, 1.0);
+		if (volumeControlVersion >= VOLUME_CONTROL_VERSION &&
+			jsonObj.HasKey(L"playbackEndpointId") && jsonObj.HasKey(L"playbackReferenceVolume"))
+		{
+			g_playbackEndpointId = jsonObj.Lookup(L"playbackEndpointId").GetString();
+			g_playbackReferenceVolume = static_cast<float>(std::clamp(
+				jsonObj.Lookup(L"playbackReferenceVolume").GetNumber(), 0.0, 1.0));
+			g_playbackReferenceReady = !g_playbackEndpointId.empty();
+		}
 
 		auto lastDevices = jsonObj.Lookup(L"lastDevices").GetArray();
 		g_lastDevices.reserve(lastDevices.Size());
@@ -87,6 +103,13 @@ void SaveSettings()
 		JsonObject jsonObj;
 		jsonObj.Insert(L"reconnect", JsonValue::CreateBooleanValue(g_reconnect));
 		jsonObj.Insert(L"playbackVolume", JsonValue::CreateNumberValue(g_playbackVolume.load()));
+		jsonObj.Insert(L"volumeControlVersion", JsonValue::CreateNumberValue(VOLUME_CONTROL_VERSION));
+		{
+			std::lock_guard lock(g_volumeMutex);
+			jsonObj.Insert(L"playbackEndpointId", JsonValue::CreateStringValue(g_playbackEndpointId));
+			jsonObj.Insert(L"playbackReferenceVolume",
+				JsonValue::CreateNumberValue(g_playbackReferenceVolume));
+		}
 
 		JsonArray lastDevices;
 		{
