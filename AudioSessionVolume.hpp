@@ -1,7 +1,8 @@
 #pragma once
 
-// Bluetooth source audio arrives through its own capture endpoint. Never touch
-// the default render endpoint, which also carries every other PC application.
+// The Bluetooth sink is rendered by an AudioSrv-owned session on a render
+// endpoint. Its session identifier contains the associated A2DP capture
+// endpoint GUID; the capture endpoint's own volume is not in the playback path.
 std::wstring BluetoothParentId(std::wstring_view deviceId)
 {
 	const auto begin = deviceId.find(L"BTHENUM#");
@@ -13,15 +14,29 @@ std::wstring BluetoothParentId(std::wstring_view deviceId)
 	return parent;
 }
 
-bool GetEndpointParentId(std::wstring_view endpointId, std::wstring& parentId)
+bool EqualsIgnoreCase(std::wstring_view left, std::wstring_view right)
 {
-	std::wstring instanceId = L"SWD\\MMDEVAPI\\";
-	instanceId.append(endpointId);
-	DEVINST endpoint = 0;
-	if (CM_Locate_DevNodeW(&endpoint, instanceId.data(), CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS)
+	return left.size() == right.size() &&
+		CompareStringOrdinal(left.data(), static_cast<int>(left.size()),
+			right.data(), static_cast<int>(right.size()), TRUE) == CSTR_EQUAL;
+}
+
+bool ContainsIgnoreCase(std::wstring_view text, std::wstring_view part)
+{
+	if (part.empty() || part.size() > text.size())
 		return false;
+	for (size_t i = 0; i <= text.size() - part.size(); ++i)
+	{
+		if (EqualsIgnoreCase(text.substr(i, part.size()), part))
+			return true;
+	}
+	return false;
+}
+
+bool GetPnPParentId(DEVINST child, std::wstring& parentId)
+{
 	DEVINST parent = 0;
-	if (CM_Get_Parent(&parent, endpoint, 0) != CR_SUCCESS)
+	if (CM_Get_Parent(&parent, child, 0) != CR_SUCCESS)
 		return false;
 	ULONG size = 0;
 	if (CM_Get_Device_ID_Size(&size, parent, 0) != CR_SUCCESS)
@@ -34,12 +49,69 @@ bool GetEndpointParentId(std::wstring_view endpointId, std::wstring& parentId)
 	return true;
 }
 
-bool FindPhoneCaptureEndpoint(std::wstring_view deviceId,
-	winrt::com_ptr<IMMDevice>& selected, std::wstring& selectedId)
+bool FindPhoneEndpointGuid(std::wstring_view deviceId, std::wstring& endpointGuid)
 {
 	const auto expectedParent = BluetoothParentId(deviceId);
 	if (expectedParent.empty())
 		return false;
+	constexpr auto filter = L"SWD\\MMDEVAPI";
+	constexpr ULONG flags = CM_GETIDLIST_FILTER_ENUMERATOR;
+	ULONG size = 0;
+	if (CM_Get_Device_ID_List_SizeW(&size, filter, flags) != CR_SUCCESS || size < 2)
+		return false;
+	std::wstring ids(size, L'\0');
+	if (CM_Get_Device_ID_ListW(filter, ids.data(), size, flags) != CR_SUCCESS)
+		return false;
+	for (wchar_t* id = ids.data(); *id; id += wcslen(id) + 1)
+	{
+		std::wstring_view instance(id);
+		constexpr std::wstring_view capturePrefix = L"SWD\\MMDEVAPI\\{0.0.1.";
+		if (instance.size() < capturePrefix.size() ||
+			!EqualsIgnoreCase(instance.substr(0, capturePrefix.size()), capturePrefix))
+			continue;
+		DEVINST endpoint = 0;
+		if (CM_Locate_DevNodeW(&endpoint, id, CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS)
+			continue;
+		std::wstring parent;
+		if (!GetPnPParentId(endpoint, parent) || !EqualsIgnoreCase(parent, expectedParent))
+			continue;
+		const auto guidStart = instance.rfind(L'{');
+		if (guidStart == std::wstring_view::npos || instance.back() != L'}')
+			continue;
+		endpointGuid.assign(instance.substr(guidStart));
+		AppendLog(L"Matched phone A2DP endpoint " + endpointGuid);
+		return true;
+	}
+	return false;
+}
+
+float MapPlaybackVolumeToSession(float slider, float reference)
+{
+	slider = std::clamp(slider, 0.0f, 1.0f);
+	reference = std::clamp(reference, 0.0f, 1.0f);
+	constexpr float neutral = static_cast<float>(DEFAULT_PLAYBACK_VOLUME);
+	if (slider <= neutral)
+		return reference * (slider / neutral);
+	return reference + (1.0f - reference) * ((slider - neutral) / (1.0f - neutral));
+}
+
+bool SetPhoneSessionVolume(std::wstring_view deviceId, float slider,
+	bool onlyNewSession, bool allowUnmute)
+{
+	std::wstring endpointGuid;
+	{
+		std::lock_guard lock(g_volumeMutex);
+		auto cached = g_phoneEndpointGuids.find(std::wstring(deviceId));
+		if (cached != g_phoneEndpointGuids.end())
+			endpointGuid = cached->second;
+	}
+	if (endpointGuid.empty())
+	{
+		if (!FindPhoneEndpointGuid(deviceId, endpointGuid))
+			return false;
+		std::lock_guard lock(g_volumeMutex);
+		g_phoneEndpointGuids.insert_or_assign(std::wstring(deviceId), endpointGuid);
+	}
 
 	winrt::com_ptr<IMMDeviceEnumerator> enumerator;
 	auto result = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
@@ -49,105 +121,95 @@ bool FindPhoneCaptureEndpoint(std::wstring_view deviceId,
 		AppendHresultLog(L"Create audio device enumerator failed", result);
 		return false;
 	}
-
-	winrt::com_ptr<IMMDeviceCollection> endpoints;
-	result = enumerator->EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE, endpoints.put());
+	winrt::com_ptr<IMMDeviceCollection> outputs;
+	result = enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, outputs.put());
 	if (FAILED(result))
 	{
-		AppendHresultLog(L"Enumerate active capture endpoints failed", result);
+		AppendHresultLog(L"Enumerate render endpoints failed", result);
 		return false;
 	}
-	UINT count = 0;
-	if (FAILED(endpoints->GetCount(&count)))
+	UINT outputCount = 0;
+	if (FAILED(outputs->GetCount(&outputCount)))
 		return false;
-	for (UINT i = 0; i < count; ++i)
+	bool found = false;
+	for (UINT outputIndex = 0; outputIndex < outputCount; ++outputIndex)
 	{
-		winrt::com_ptr<IMMDevice> endpoint;
-		if (FAILED(endpoints->Item(i, endpoint.put())))
+		winrt::com_ptr<IMMDevice> output;
+		if (FAILED(outputs->Item(outputIndex, output.put())))
 			continue;
-		LPWSTR rawId = nullptr;
-		if (FAILED(endpoint->GetId(&rawId)))
+		winrt::com_ptr<IAudioSessionManager2> manager;
+		if (FAILED(output->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL,
+			nullptr, manager.put_void())))
 			continue;
-		std::wstring endpointId(rawId);
-		CoTaskMemFree(rawId);
-		std::wstring parentId;
-		if (!GetEndpointParentId(endpointId, parentId))
+		winrt::com_ptr<IAudioSessionEnumerator> sessions;
+		if (FAILED(manager->GetSessionEnumerator(sessions.put())))
 			continue;
-		if (CompareStringOrdinal(parentId.c_str(), -1, expectedParent.c_str(), -1, TRUE) == CSTR_EQUAL)
+		int sessionCount = 0;
+		if (FAILED(sessions->GetCount(&sessionCount)))
+			continue;
+		for (int sessionIndex = 0; sessionIndex < sessionCount; ++sessionIndex)
 		{
-			selected = std::move(endpoint);
-			selectedId = std::move(endpointId);
-			return true;
+			winrt::com_ptr<IAudioSessionControl> session;
+			if (FAILED(sessions->GetSession(sessionIndex, session.put())))
+				continue;
+			auto session2 = session.try_as<IAudioSessionControl2>();
+			if (!session2)
+				continue;
+			AudioSessionState state{};
+			if (FAILED(session2->GetState(&state)) || state == AudioSessionStateExpired)
+				continue;
+			LPWSTR rawSessionId = nullptr;
+			if (FAILED(session2->GetSessionIdentifier(&rawSessionId)))
+				continue;
+			std::wstring sessionId(rawSessionId);
+			CoTaskMemFree(rawSessionId);
+			if (!ContainsIgnoreCase(sessionId, endpointGuid))
+				continue;
+			LPWSTR rawInstanceId = nullptr;
+			if (FAILED(session2->GetSessionInstanceIdentifier(&rawInstanceId)))
+				continue;
+			std::wstring instanceId(rawInstanceId);
+			CoTaskMemFree(rawInstanceId);
+			found = true;
+			if (onlyNewSession && g_appliedPhoneSessions.find(instanceId) != g_appliedPhoneSessions.end())
+				continue;
+			auto volume = session.try_as<ISimpleAudioVolume>();
+			if (!volume)
+				continue;
+			float current = 1.0f;
+			if (FAILED(volume->GetMasterVolume(&current)))
+				continue;
+			float reference;
+			{
+				std::lock_guard lock(g_volumeMutex);
+				auto [it, inserted] = g_sessionVolumeReferences.try_emplace(endpointGuid,
+					std::clamp(current, 0.0f, 1.0f));
+				reference = it->second;
+				if (inserted)
+					AppendLog(L"Phone session neutral reference: " + endpointGuid + L" at " +
+						std::to_wstring(static_cast<int>(std::lround(reference * 100.0f))) + L"%");
+			}
+			if (allowUnmute && slider > 0.0f)
+				volume->SetMute(FALSE, nullptr);
+			const auto target = MapPlaybackVolumeToSession(slider, reference);
+			result = volume->SetMasterVolume(target, nullptr);
+			if (FAILED(result))
+			{
+				AppendHresultLog(L"Set phone session volume failed", result);
+				continue;
+			}
+			g_appliedPhoneSessions.insert(std::move(instanceId));
+			AppendLog(L"Applied phone-only session volume: slider " +
+				std::to_wstring(static_cast<int>(std::lround(slider * 100.0f))) + L"%, session " +
+				std::to_wstring(static_cast<int>(std::lround(target * 100.0f))) + L"%");
 		}
 	}
-	return false;
-}
-
-float MapPlaybackVolumeToEndpoint(float controlVolume, float referenceVolume)
-{
-	controlVolume = std::clamp(controlVolume, 0.0f, 1.0f);
-	referenceVolume = std::clamp(referenceVolume, 0.0f, 1.0f);
-	constexpr float neutral = static_cast<float>(DEFAULT_PLAYBACK_VOLUME);
-	if (controlVolume <= neutral)
-		return referenceVolume * (controlVolume / neutral);
-	return referenceVolume + (1.0f - referenceVolume) *
-		((controlVolume - neutral) / (1.0f - neutral));
-}
-
-bool SetPhoneCaptureVolume(std::wstring_view deviceId, float controlVolume, bool allowUnmute)
-{
-	winrt::com_ptr<IMMDevice> endpoint;
-	std::wstring endpointId;
-	if (!FindPhoneCaptureEndpoint(deviceId, endpoint, endpointId))
-		return false;
-
-	winrt::com_ptr<IAudioEndpointVolume> volume;
-	auto result = endpoint->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL,
-		nullptr, volume.put_void());
-	if (FAILED(result))
-	{
-		AppendHresultLog(L"Activate phone capture volume failed", result);
-		return false;
-	}
-	float currentVolume = 1.0f;
-	result = volume->GetMasterVolumeLevelScalar(&currentVolume);
-	if (FAILED(result))
-	{
-		AppendHresultLog(L"Read phone capture volume failed", result);
-		return false;
-	}
-
-	float referenceVolume;
-	{
-		std::lock_guard lock(g_volumeMutex);
-		auto [it, inserted] = g_captureVolumeReferences.try_emplace(endpointId,
-			std::clamp(currentVolume, 0.0f, 1.0f));
-		referenceVolume = it->second;
-		if (inserted)
-			AppendLog(L"Phone capture neutral reference: " + endpointId + L" at " +
-				std::to_wstring(static_cast<int>(std::lround(referenceVolume * 100.0f))) + L"%");
-	}
-	if (allowUnmute && controlVolume > 0.0f)
-	{
-		result = volume->SetMute(FALSE, nullptr);
-		if (FAILED(result))
-			AppendHresultLog(L"Unmute phone capture endpoint failed", result);
-	}
-	const auto targetVolume = MapPlaybackVolumeToEndpoint(controlVolume, referenceVolume);
-	result = volume->SetMasterVolumeLevelScalar(targetVolume, nullptr);
-	if (FAILED(result))
-	{
-		AppendHresultLog(L"Set phone capture volume failed", result);
-		return false;
-	}
-	return true;
+	return found;
 }
 
 winrt::fire_and_forget ApplyPlaybackVolume(bool logResult = false, bool allowUnmute = false)
 {
 	co_await winrt::resume_background();
-	// Slider notifications may overlap. Read the newest value only after the
-	// previous endpoint write finishes so an older task cannot win the race.
 	std::lock_guard applyLock(g_volumeApplyMutex);
 	std::vector<std::wstring> deviceIds;
 	{
@@ -158,18 +220,32 @@ winrt::fire_and_forget ApplyPlaybackVolume(bool logResult = false, bool allowUnm
 				deviceIds.push_back(deviceId);
 		}
 	}
-	const auto controlVolume = static_cast<float>(g_playbackVolume.load());
+	const auto slider = static_cast<float>(g_playbackVolume.load());
 	for (const auto& deviceId : deviceIds)
 	{
 		if (g_shuttingDown)
 			co_return;
-		if (SetPhoneCaptureVolume(deviceId, controlVolume, allowUnmute))
+		if (!SetPhoneSessionVolume(deviceId, slider, false, allowUnmute) && logResult)
+			AppendLog(L"Phone audio session not yet available for: " + deviceId);
+	}
+}
+
+winrt::fire_and_forget WatchPhoneAudioSession(std::wstring deviceId, uint64_t generation)
+{
+	co_await winrt::resume_background();
+	while (!g_shuttingDown)
+	{
 		{
-			if (logResult)
-				AppendLog(L"Applied volume to phone A2DP capture endpoint: " + deviceId +
-					L" at " + std::to_wstring(static_cast<int>(std::lround(controlVolume * 100.0f))) + L"%");
+			std::lock_guard lock(g_connectionMutex);
+			auto entry = g_audioPlaybackConnections.find(deviceId);
+			if (entry == g_audioPlaybackConnections.end() || entry->second.Generation != generation ||
+				entry->second.Connecting)
+				co_return;
 		}
-		else if (logResult)
-			AppendLog(L"No matching active A2DP capture endpoint for: " + deviceId);
+		{
+			std::lock_guard applyLock(g_volumeApplyMutex);
+			SetPhoneSessionVolume(deviceId, static_cast<float>(g_playbackVolume.load()), true, false);
+		}
+		co_await winrt::resume_after(std::chrono::seconds(2));
 	}
 }

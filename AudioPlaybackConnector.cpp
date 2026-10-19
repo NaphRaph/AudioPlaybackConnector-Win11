@@ -835,7 +835,7 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			g_deviceErrorMessages.erase(deviceId);
 		}
 		AppendLog(L"Connection opened: " + deviceId);
-		ApplyPlaybackVolume(true);
+		WatchPhoneAudioSession(deviceId, generation);
 	}
 	else if (!g_shuttingDown)
 	{

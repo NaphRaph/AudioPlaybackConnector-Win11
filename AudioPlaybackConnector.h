@@ -27,7 +27,7 @@ constexpr auto AUDIO_REPAIR_CONNECTION_TIMEOUT = std::chrono::seconds(8);
 constexpr auto AUDIO_REPAIR_POLL_INTERVAL = std::chrono::milliseconds(250);
 constexpr auto AUDIO_REPAIR_PRIME_HOLD = std::chrono::milliseconds(750);
 constexpr double DEFAULT_PLAYBACK_VOLUME = 0.5;
-constexpr int VOLUME_CONTROL_VERSION = 3;
+constexpr int VOLUME_CONTROL_VERSION = 4;
 
 struct ConnectionStateChangedMessage
 {
@@ -77,7 +77,9 @@ NOTIFYICONIDENTIFIER g_niid = {
 UINT WM_TASKBAR_CREATED = 0;
 bool g_reconnect = false;
 std::atomic<double> g_playbackVolume = DEFAULT_PLAYBACK_VOLUME;
-std::unordered_map<std::wstring, float> g_captureVolumeReferences;
+std::unordered_map<std::wstring, float> g_sessionVolumeReferences;
+std::unordered_map<std::wstring, std::wstring> g_phoneEndpointGuids;
+std::unordered_set<std::wstring> g_appliedPhoneSessions;
 std::vector<std::wstring> g_lastDevices;
 uint64_t g_nextConnectionGeneration = 0;
 std::atomic_uint64_t g_deviceWatcherGeneration = 0;

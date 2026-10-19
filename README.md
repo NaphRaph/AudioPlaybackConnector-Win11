@@ -51,7 +51,7 @@ SHA-256 checksums are included in `SHA256SUMS.txt` on the Release page.
 
 Right-click the notification-area icon to open Bluetooth settings or exit the app. When exiting, **Reconnect on next start** can remember active devices and reconnect them on the next launch.
 
-The volume slider targets only the capture endpoint associated with each connected Bluetooth phone, leaving the PC's speaker/headphone master volume and other apps untouched. On the first upgraded launch, the phone endpoint's current level becomes the normal reference: 50% preserves it, 0–50% attenuates it, and 50–100% uses any remaining endpoint headroom. If the phone endpoint is already at its maximum, values above 50% cannot provide additional gain through this API. The Bluetooth playback API does not expose decoded samples for a software gain stage.
+The volume slider targets only the Windows playback session that carries each connected phone's Bluetooth audio. It does not change the PC's speaker/headphone master volume or other apps. On first launch, the phone session's current level becomes the neutral reference: 50% preserves it, 0–50% attenuates it, and 50–100% uses any remaining session headroom. If that session is already at 100%, this API cannot provide further gain. The app watches for the phone session to appear or be recreated and applies the saved setting to the new session.
 
 Settings and diagnostic logs are stored under `%LOCALAPPDATA%\AudioPlaybackConnector`, not beside the executable. An existing `AudioPlaybackConnector.json` beside the executable is migrated automatically.
 
