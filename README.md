@@ -17,7 +17,7 @@ Turn a Windows 10/11 PC into a Bluetooth speaker. This app enables the built-in 
 - Connect and disconnect paired phones from the notification area
 - Optional automatic reconnection on the next launch
 - Single-instance operation with support for multiple connected source devices
-- PC-side output volume independent from the phone, with 50% as the neutral level
+- Phone A2DP input volume independent from the PC's other audio, with 50% as the neutral level
 - Improved A2DP connection lifecycle for Windows 11
 - Portable single-file executable with no installer
 - Official x86, x64 and ARM64 builds
@@ -51,7 +51,7 @@ SHA-256 checksums are included in `SHA256SUMS.txt` on the Release page.
 
 Right-click the notification-area icon to open Bluetooth settings or exit the app. When exiting, **Reconnect on next start** can remember active devices and reconnect them on the next launch.
 
-The volume slider now controls the current default Windows render endpoint, so it changes the level actually heard from the headphones or speakers instead of looking for a process-owned session that the Windows Bluetooth sink does not create. Phone and PC volume remain separately adjustable. On the first upgraded launch, the current Windows output level is captured as the normal reference: 50% preserves it, 0–50% attenuates it, and 50–100% uses any remaining endpoint headroom. Windows cannot provide clean gain beyond an endpoint that is already at its hardware maximum.
+The volume slider targets only the capture endpoint associated with each connected Bluetooth phone, leaving the PC's speaker/headphone master volume and other apps untouched. On the first upgraded launch, the phone endpoint's current level becomes the normal reference: 50% preserves it, 0–50% attenuates it, and 50–100% uses any remaining endpoint headroom. If the phone endpoint is already at its maximum, values above 50% cannot provide additional gain through this API. The Bluetooth playback API does not expose decoded samples for a software gain stage.
 
 Settings and diagnostic logs are stored under `%LOCALAPPDATA%\AudioPlaybackConnector`, not beside the executable. An existing `AudioPlaybackConnector.json` beside the executable is migrated automatically.
 

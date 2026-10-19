@@ -27,7 +27,7 @@ constexpr auto AUDIO_REPAIR_CONNECTION_TIMEOUT = std::chrono::seconds(8);
 constexpr auto AUDIO_REPAIR_POLL_INTERVAL = std::chrono::milliseconds(250);
 constexpr auto AUDIO_REPAIR_PRIME_HOLD = std::chrono::milliseconds(750);
 constexpr double DEFAULT_PLAYBACK_VOLUME = 0.5;
-constexpr int VOLUME_CONTROL_VERSION = 2;
+constexpr int VOLUME_CONTROL_VERSION = 3;
 
 struct ConnectionStateChangedMessage
 {
@@ -62,6 +62,7 @@ std::recursive_mutex g_connectionMutex;
 std::mutex g_deviceListMutex;
 std::mutex g_logMutex;
 std::mutex g_volumeMutex;
+std::mutex g_volumeApplyMutex;
 HICON g_hIconLight = nullptr;
 HICON g_hIconDark = nullptr;
 NOTIFYICONDATAW g_nid = {
@@ -76,9 +77,7 @@ NOTIFYICONIDENTIFIER g_niid = {
 UINT WM_TASKBAR_CREATED = 0;
 bool g_reconnect = false;
 std::atomic<double> g_playbackVolume = DEFAULT_PLAYBACK_VOLUME;
-std::wstring g_playbackEndpointId;
-float g_playbackReferenceVolume = 1.0f;
-bool g_playbackReferenceReady = false;
+std::unordered_map<std::wstring, float> g_captureVolumeReferences;
 std::vector<std::wstring> g_lastDevices;
 uint64_t g_nextConnectionGeneration = 0;
 std::atomic_uint64_t g_deviceWatcherGeneration = 0;

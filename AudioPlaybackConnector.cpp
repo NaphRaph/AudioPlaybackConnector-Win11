@@ -194,8 +194,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	LoadSettings();
 	LoadTranslateData();
 	AppendLog(L"Application started");
-	InitializePlaybackVolumeControl();
-	ApplyPlaybackVolume(true);
 
 	bool supported = false;
 	try

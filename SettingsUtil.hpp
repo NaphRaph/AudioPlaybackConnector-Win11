@@ -38,9 +38,7 @@ void DefaultSettings()
 {
 	g_reconnect = false;
 	g_playbackVolume = DEFAULT_PLAYBACK_VOLUME;
-	g_playbackEndpointId.clear();
-	g_playbackReferenceVolume = 1.0f;
-	g_playbackReferenceReady = false;
+	g_captureVolumeReferences.clear();
 	g_lastDevices.clear();
 }
 
@@ -69,20 +67,25 @@ void LoadSettings()
 		std::wstring utf16 = Utf8ToUtf16(string);
 		auto jsonObj = JsonObject::Parse(utf16);
 		g_reconnect = jsonObj.Lookup(L"reconnect").GetBoolean();
-		// Version 1 tried to control a process-owned audio session. The Bluetooth
-		// sink is rendered by Windows instead, so that value never affected sound.
-		// Do not carry its misleading 100% value into the endpoint-volume model.
+		// Versions 1 and 2 controlled the wrong audio path. Discard their slider
+		// positions and start at the phone capture endpoint's neutral 50%.
 		const auto volumeControlVersion = jsonObj.HasKey(L"volumeControlVersion") ?
 			static_cast<int>(jsonObj.Lookup(L"volumeControlVersion").GetNumber()) : 1;
 		if (volumeControlVersion >= VOLUME_CONTROL_VERSION && jsonObj.HasKey(L"playbackVolume"))
 			g_playbackVolume = std::clamp(jsonObj.Lookup(L"playbackVolume").GetNumber(), 0.0, 1.0);
 		if (volumeControlVersion >= VOLUME_CONTROL_VERSION &&
-			jsonObj.HasKey(L"playbackEndpointId") && jsonObj.HasKey(L"playbackReferenceVolume"))
+			jsonObj.HasKey(L"captureVolumeReferences"))
 		{
-			g_playbackEndpointId = jsonObj.Lookup(L"playbackEndpointId").GetString();
-			g_playbackReferenceVolume = static_cast<float>(std::clamp(
-				jsonObj.Lookup(L"playbackReferenceVolume").GetNumber(), 0.0, 1.0));
-			g_playbackReferenceReady = !g_playbackEndpointId.empty();
+			for (const auto& item : jsonObj.Lookup(L"captureVolumeReferences").GetArray())
+			{
+				if (item.ValueType() != JsonValueType::Object)
+					continue;
+				auto reference = item.GetObject();
+				if (reference.HasKey(L"endpointId") && reference.HasKey(L"referenceVolume"))
+					g_captureVolumeReferences.emplace(
+						std::wstring(reference.Lookup(L"endpointId").GetString()),
+						static_cast<float>(std::clamp(reference.Lookup(L"referenceVolume").GetNumber(), 0.0, 1.0)));
+			}
 		}
 
 		auto lastDevices = jsonObj.Lookup(L"lastDevices").GetArray();
@@ -106,9 +109,15 @@ void SaveSettings()
 		jsonObj.Insert(L"volumeControlVersion", JsonValue::CreateNumberValue(VOLUME_CONTROL_VERSION));
 		{
 			std::lock_guard lock(g_volumeMutex);
-			jsonObj.Insert(L"playbackEndpointId", JsonValue::CreateStringValue(g_playbackEndpointId));
-			jsonObj.Insert(L"playbackReferenceVolume",
-				JsonValue::CreateNumberValue(g_playbackReferenceVolume));
+			JsonArray references;
+			for (const auto& [endpointId, referenceVolume] : g_captureVolumeReferences)
+			{
+				JsonObject reference;
+				reference.Insert(L"endpointId", JsonValue::CreateStringValue(endpointId));
+				reference.Insert(L"referenceVolume", JsonValue::CreateNumberValue(referenceVolume));
+				references.Append(reference);
+			}
+			jsonObj.Insert(L"captureVolumeReferences", references);
 		}
 
 		JsonArray lastDevices;
