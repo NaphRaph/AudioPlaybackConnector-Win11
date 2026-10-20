@@ -144,6 +144,13 @@ winrt::Windows::Foundation::IAsyncOperation<bool> WaitForDeviceConnection(
 	co_return false;
 }
 
+bool IsDeviceConnectionInProgress(std::wstring_view deviceId)
+{
+	std::lock_guard lock(g_connectionMutex);
+	auto it = g_audioPlaybackConnections.find(std::wstring(deviceId));
+	return it != g_audioPlaybackConnections.end() && it->second.Connecting;
+}
+
 void QueueConnectionStateChanged(std::wstring deviceId, uint64_t generation)
 {
 	// This callback may run on a non-UI thread. Only post a message here;
@@ -709,11 +716,17 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 		if (g_shuttingDown)
 			co_return;
 	}
+	{
+		std::lock_guard lock(g_connectionMutex);
+		if (g_audioPlaybackConnections.find(deviceId) != g_audioPlaybackConnections.end())
+			co_return;
+	}
 
 	bool success = false;
 	std::wstring errorMessage;
 	AudioPlaybackConnection connection = nullptr;
 	uint64_t generation = 0;
+	std::wstring_view connectionStage = L"TryCreateFromId";
 
 	try
 	{
@@ -740,6 +753,8 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 
 			// StartAsync is tied to this connection instance. Every newly created
 			// connection must be enabled before it is opened.
+			connectionStage = L"StartAsync";
+			AppendLog(L"Connection StartAsync: " + deviceId);
 			co_await connection.StartAsync();
 			co_await uiContext;
 			if (g_shuttingDown || !IsCurrentConnection(deviceId, generation))
@@ -748,10 +763,15 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			// Open immediately after StartAsync, as required by the documented
 			// AudioPlaybackConnection lifecycle. An arbitrary delay here can leave
 			// an already-playing source waiting on a half-open A2DP transport.
+			connectionStage = L"OpenAsync";
+			AppendLog(L"Connection OpenAsync: " + deviceId);
 			auto result = co_await connection.OpenAsync();
 			co_await uiContext;
 			if (g_shuttingDown)
 				co_return;
+			AppendLog(L"Connection OpenAsync returned status " +
+				std::to_wstring(static_cast<int>(result.Status())) + L": " + deviceId);
+			connectionStage = L"WaitForOpenedState";
 
 			switch (result.Status())
 			{
@@ -815,6 +835,8 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 				break;
 			}
 		}
+		AppendLog(L"Connection exception during " + std::wstring(connectionStage) +
+			L": " + deviceId);
 		LOG_CAUGHT_EXCEPTION();
 	}
 	catch (...)
@@ -822,6 +844,13 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 		success = false;
 		errorMessage = _(L"Unknown error");
 		LOG_CAUGHT_EXCEPTION();
+	}
+	if (generation != 0 && !IsCurrentConnection(deviceId, generation))
+	{
+		// A user disconnect or device removal can complete an older OpenAsync
+		// after a newer attempt has started. Never overwrite the newer state.
+		AppendLog(L"Obsolete connection completion ignored: " + deviceId);
+		co_return;
 	}
 
 	if (success && IsCurrentConnection(deviceId, generation))
@@ -892,9 +921,18 @@ winrt::fire_and_forget AutoConnectDevice(std::wstring deviceId)
 		co_await uiContext;
 		if (g_shuttingDown)
 			co_return;
+		if (!primed)
+		{
+			// A timeout is not an OpenAsync failure. Closing the still-pending
+			// connection aborts it (0x800703E3) and can leave the Bluetooth
+			// transport returning 0x8007001F on every subsequent attempt.
+			AppendLog((IsDeviceConnectionInProgress(deviceId) ?
+				L"Automatic warm-up still connecting; leaving it alone: " :
+				L"Automatic warm-up failed; not reconnecting: ") + deviceId);
+			co_return;
+		}
 
-		if (primed)
-			co_await winrt::resume_after(AUTO_CONNECT_PRIME_HOLD);
+		co_await winrt::resume_after(AUTO_CONNECT_PRIME_HOLD);
 		co_await uiContext;
 		if (g_shuttingDown)
 			co_return;
@@ -902,10 +940,15 @@ winrt::fire_and_forget AutoConnectDevice(std::wstring deviceId)
 		{
 			std::lock_guard lock(g_connectionMutex);
 			auto it = g_audioPlaybackConnections.find(deviceId);
-			if (it != g_audioPlaybackConnections.end())
+			if (it != g_audioPlaybackConnections.end() && !it->second.Connecting)
 			{
 				it->second.Connection.Close();
 				g_audioPlaybackConnections.erase(it);
+			}
+			else
+			{
+				AppendLog(L"Automatic warm-up state changed; leaving connection alone: " + deviceId);
+				co_return;
 			}
 			g_lastConnectionCloseTimes.insert_or_assign(
 				deviceId, std::chrono::steady_clock::now());
@@ -983,6 +1026,11 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 		for (int attempt = 0; attempt < AUDIO_REPAIR_MAX_ATTEMPTS && !g_shuttingDown; ++attempt)
 		{
 			co_await uiContext;
+			if (IsDeviceConnectionInProgress(deviceId))
+			{
+				AppendLog(L"Audio repair deferred while connection is still opening: " + deviceId);
+				co_return;
+			}
 			{
 				std::lock_guard lock(g_connectionMutex);
 				auto it = g_audioPlaybackConnections.find(deviceId);
@@ -1013,8 +1061,12 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 
 			if (!opened)
 			{
-				AppendLog(L"Audio repair connection did not open on attempt " +
+				AppendLog((IsDeviceConnectionInProgress(deviceId) ?
+					L"Audio repair connection still opening on attempt " :
+					L"Audio repair connection failed on attempt ") +
 					std::to_wstring(attempt + 1) + L": " + deviceId);
+				if (IsDeviceConnectionInProgress(deviceId))
+					co_return;
 				continue;
 			}
 
