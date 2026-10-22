@@ -111,7 +111,8 @@ private:
 			Check(renderClient->GetService(__uuidof(IAudioRenderClient), render.put_void()));
 			UINT32 renderCapacity = 0;
 			Check(renderClient->GetBufferSize(&renderCapacity));
-			const UINT32 preroll = (std::min)(renderCapacity / 2, format->nSamplesPerSec / 20);
+			const UINT32 preroll = (std::min)(renderCapacity / 2,
+				static_cast<UINT32>(format->nSamplesPerSec / 20));
 			if (preroll > 0)
 			{
 				BYTE* silence = nullptr;
