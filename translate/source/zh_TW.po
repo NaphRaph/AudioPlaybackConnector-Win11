@@ -50,6 +50,12 @@ msgstr "結束"
 msgid "Bluetooth Settings"
 msgstr "藍牙設定"
 
+msgid "Open Logs Folder"
+msgstr "開啟記錄資料夾"
+
+msgid "Playback volume"
+msgstr "播放音量"
+
 #: AudioPlaybackConnector.cpp:287
 msgid "Connecting"
 msgstr "連線中"
@@ -61,6 +67,9 @@ msgstr "要求逾時"
 #: AudioPlaybackConnector.cpp:326
 msgid "The operation was denied by the system"
 msgstr "系統拒絕動作"
+
+msgid "The Bluetooth audio channel did not become ready"
+msgstr "藍牙音訊通道未能就緒"
 
 #: AudioPlaybackConnector.cpp:337
 msgid "Unknown error"
@@ -77,6 +86,12 @@ msgstr "連線"
 #: AudioPlaybackConnector.cpp:...
 msgid "Disconnect"
 msgstr "中斷連線"
+
+msgid "Repair audio"
+msgstr "修復聲音"
+
+msgid "Repairing audio"
+msgstr "正在修復"
 
 #: AudioPlaybackConnector.cpp:...
 msgid "Cancel"

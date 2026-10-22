@@ -48,6 +48,12 @@ msgstr ""
 msgid "Bluetooth Settings"
 msgstr ""
 
+msgid "Open Logs Folder"
+msgstr ""
+
+msgid "Playback volume"
+msgstr ""
+
 #: AudioPlaybackConnector.cpp:287
 msgid "Connecting"
 msgstr ""
@@ -58,6 +64,9 @@ msgstr ""
 
 #: AudioPlaybackConnector.cpp:326
 msgid "The operation was denied by the system"
+msgstr ""
+
+msgid "The Bluetooth audio channel did not become ready"
 msgstr ""
 
 #: AudioPlaybackConnector.cpp:337
@@ -74,6 +83,12 @@ msgstr ""
 
 #: AudioPlaybackConnector.cpp:...
 msgid "Disconnect"
+msgstr ""
+
+msgid "Repair audio"
+msgstr ""
+
+msgid "Repairing audio"
 msgstr ""
 
 #: AudioPlaybackConnector.cpp:...

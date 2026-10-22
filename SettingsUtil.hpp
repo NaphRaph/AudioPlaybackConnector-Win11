@@ -3,9 +3,43 @@
 constexpr auto CONFIG_NAME = L"AudioPlaybackConnector.json";
 constexpr auto BUFFER_SIZE = 4096;
 
+fs::path GetSettingsPath()
+{
+	return GetAppDataDirectory() / CONFIG_NAME;
+}
+
+fs::path GetLegacySettingsPath()
+{
+	return GetModuleFsPath(g_hInst).remove_filename() / CONFIG_NAME;
+}
+
+void MigrateLegacySettings()
+{
+	try
+	{
+		auto newPath = GetSettingsPath();
+		auto oldPath = GetLegacySettingsPath();
+		if (newPath == oldPath || fs::exists(newPath) || !fs::exists(oldPath))
+			return;
+
+		if (MoveFileExW(oldPath.c_str(), newPath.c_str(),
+			MOVEFILE_COPY_ALLOWED | MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+			AppendLog(L"Migrated settings from the application folder");
+		else
+			AppendHresultLog(L"Settings migration failed", HRESULT_FROM_WIN32(GetLastError()));
+	}
+	catch (...)
+	{
+		AppendLog(L"Settings migration failed with an exception");
+	}
+}
+
 void DefaultSettings()
 {
 	g_reconnect = false;
+	g_playbackVolume = DEFAULT_PLAYBACK_VOLUME;
+	g_sessionVolumeReferences.clear();
+	g_phoneEndpointGuids.clear();
 	g_lastDevices.clear();
 }
 
@@ -14,8 +48,9 @@ void LoadSettings()
 	try
 	{
 		DefaultSettings();
+		MigrateLegacySettings();
 
-		wil::unique_hfile hFile(CreateFileW((GetModuleFsPath(g_hInst).remove_filename() / CONFIG_NAME).c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+		wil::unique_hfile hFile(CreateFileW(GetSettingsPath().c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
 		THROW_LAST_ERROR_IF(!hFile);
 
 		std::string string;
@@ -33,6 +68,12 @@ void LoadSettings()
 		std::wstring utf16 = Utf8ToUtf16(string);
 		auto jsonObj = JsonObject::Parse(utf16);
 		g_reconnect = jsonObj.Lookup(L"reconnect").GetBoolean();
+		// Versions 1-3 controlled the wrong audio path. Version 4 already used
+		// this slider, so preserve its position when upgrading to digital gain.
+		const auto volumeControlVersion = jsonObj.HasKey(L"volumeControlVersion") ?
+			static_cast<int>(jsonObj.Lookup(L"volumeControlVersion").GetNumber()) : 1;
+		if (volumeControlVersion >= 4 && jsonObj.HasKey(L"playbackVolume"))
+			g_playbackVolume = std::clamp(jsonObj.Lookup(L"playbackVolume").GetNumber(), 0.0, 1.0);
 
 		auto lastDevices = jsonObj.Lookup(L"lastDevices").GetArray();
 		g_lastDevices.reserve(lastDevices.Size());
@@ -51,6 +92,8 @@ void SaveSettings()
 	{
 		JsonObject jsonObj;
 		jsonObj.Insert(L"reconnect", JsonValue::CreateBooleanValue(g_reconnect));
+		jsonObj.Insert(L"playbackVolume", JsonValue::CreateNumberValue(g_playbackVolume.load()));
+		jsonObj.Insert(L"volumeControlVersion", JsonValue::CreateNumberValue(VOLUME_CONTROL_VERSION));
 
 		JsonArray lastDevices;
 		{
@@ -60,7 +103,7 @@ void SaveSettings()
 		}
 		jsonObj.Insert(L"lastDevices", lastDevices);
 
-		wil::unique_hfile hFile(CreateFileW((GetModuleFsPath(g_hInst).remove_filename() / CONFIG_NAME).c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
+		wil::unique_hfile hFile(CreateFileW(GetSettingsPath().c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
 		THROW_LAST_ERROR_IF(!hFile);
 
 		std::string utf8 = Utf16ToUtf8(jsonObj.Stringify());
