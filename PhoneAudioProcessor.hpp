@@ -66,13 +66,29 @@ private:
 				__uuidof(IMMDeviceEnumerator), enumerator.put_void()));
 
 			std::wstring endpointGuid;
-			stage = L"Find phone audio endpoint";
-			if (!FindPhoneEndpointGuid(m_deviceId, endpointGuid))
-				throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_NOT_FOUND));
-			const std::wstring captureId = L"{0.0.1.00000000}." + endpointGuid;
 			winrt::com_ptr<IMMDevice> input;
-			stage = L"Open phone audio endpoint";
-			Check(enumerator->GetDevice(captureId.c_str(), input.put()));
+			HRESULT endpointError = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+			// Windows can report Opened before its A2DP capture endpoint is
+			// published by MMDevAPI. Wait here, off the UI thread, without closing
+			// the still-healthy Bluetooth connection.
+			for (int attempt = 0; attempt < 80 && !m_stop && !g_shuttingDown; ++attempt)
+			{
+				stage = L"Find phone audio endpoint";
+				if (endpointGuid.empty())
+					FindPhoneEndpointGuid(m_deviceId, endpointGuid);
+				if (!endpointGuid.empty())
+				{
+					stage = L"Open phone audio endpoint";
+					const std::wstring captureId = L"{0.0.1.00000000}." + endpointGuid;
+					endpointError = enumerator->GetDevice(captureId.c_str(), input.put());
+					if (SUCCEEDED(endpointError))
+						break;
+					endpointGuid.clear();
+				}
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			}
+			if (!input)
+				throw winrt::hresult_error(endpointError);
 			winrt::com_ptr<IAudioClient> captureClient;
 			Check(input->Activate(__uuidof(IAudioClient), CLSCTX_ALL,
 				nullptr, captureClient.put_void()));
