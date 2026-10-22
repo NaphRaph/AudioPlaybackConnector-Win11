@@ -51,6 +51,13 @@ jobs:
           -m
           "-p:Configuration=Release;Platform=${{ matrix.platform }};PlatformToolset=v143"
 
+      - name: Test phone-only gain
+        if: matrix.arch == 'x64'
+        shell: pwsh
+        run: |
+          msbuild tests/PhoneAudioGainTests.vcxproj "-p:Configuration=Release;Platform=x64"
+          & tests/x64/Release/PhoneAudioGainTests.exe
+
       - name: Upload ${{ matrix.arch }} binary
         uses: actions/upload-artifact@v4
         with:

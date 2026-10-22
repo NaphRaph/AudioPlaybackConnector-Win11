@@ -1,6 +1,7 @@
 #pragma once
 
 #include "resource.h"
+#include "PhoneAudioGain.hpp"
 
 using namespace winrt::Windows::Data::Json;
 using namespace winrt::Windows::Devices::Enumeration;
@@ -15,6 +16,7 @@ constexpr UINT WM_NOTIFYICON = WM_APP + 1;
 constexpr UINT WM_CONNECTDEVICE = WM_APP + 2;
 constexpr UINT WM_CONNECTION_STATE_CHANGED = WM_APP + 3;
 constexpr UINT WM_DEVICE_LIST_CHANGED = WM_APP + 4;
+constexpr UINT WM_PHONE_AUDIO_FAILED = WM_APP + 5;
 constexpr UINT_PTR SHUTDOWN_TIMER_ID = 1;
 constexpr UINT SHUTDOWN_RELEASE_DELAY_MS = 2000;
 constexpr auto CONNECTION_RELEASE_COOLDOWN = std::chrono::milliseconds(1500);
@@ -30,13 +32,23 @@ constexpr auto AUDIO_REPAIR_CONNECTION_TIMEOUT = std::chrono::seconds(25);
 constexpr auto AUDIO_REPAIR_POLL_INTERVAL = std::chrono::milliseconds(250);
 constexpr auto AUDIO_REPAIR_PRIME_HOLD = std::chrono::milliseconds(750);
 constexpr double DEFAULT_PLAYBACK_VOLUME = 0.5;
-constexpr int VOLUME_CONTROL_VERSION = 4;
+constexpr int VOLUME_CONTROL_VERSION = 5;
 
 struct ConnectionStateChangedMessage
 {
 	std::wstring deviceId;
 	uint64_t generation{};
 };
+
+struct PhoneAudioFailureMessage
+{
+	std::wstring deviceId;
+	uint64_t generation{};
+	std::wstring reason;
+};
+
+class PhoneAudioProcessor;
+void QueuePhoneAudioFailure(std::wstring deviceId, uint64_t generation, std::wstring reason);
 
 struct AudioPlaybackConnectionEntry
 {
@@ -57,6 +69,7 @@ MenuFlyout g_xamlMenu = nullptr;
 FocusState g_menuFocusState = FocusState::Unfocused;
 DeviceWatcher g_deviceWatcher = nullptr;
 std::unordered_map<std::wstring, AudioPlaybackConnectionEntry> g_audioPlaybackConnections;
+std::unordered_map<std::wstring, std::shared_ptr<PhoneAudioProcessor>> g_phoneAudioProcessors;
 std::unordered_map<std::wstring, std::wstring> g_deviceErrorMessages;
 std::unordered_map<std::wstring, std::wstring> g_availableDeviceNames;
 std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> g_lastConnectionCloseTimes;
@@ -95,4 +108,5 @@ std::atomic_bool g_shuttingDown = false;
 #include "I18n.hpp"
 #include "SettingsUtil.hpp"
 #include "AudioSessionVolume.hpp"
+#include "PhoneAudioProcessor.hpp"
 #include "Direct2DSvg.hpp"

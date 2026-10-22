@@ -198,7 +198,10 @@ bool SetPhoneSessionVolume(std::wstring_view deviceId, float slider,
 				AppendHresultLog(L"Set phone session volume failed", result);
 				continue;
 			}
-			g_appliedPhoneSessions.insert(std::move(instanceId));
+			if (slider >= static_cast<float>(DEFAULT_PLAYBACK_VOLUME))
+				g_appliedPhoneSessions.erase(instanceId);
+			else
+				g_appliedPhoneSessions.insert(std::move(instanceId));
 			AppendLog(L"Applied phone-only session volume: slider " +
 				std::to_wstring(static_cast<int>(std::lround(slider * 100.0f))) + L"%, session " +
 				std::to_wstring(static_cast<int>(std::lround(target * 100.0f))) + L"%");

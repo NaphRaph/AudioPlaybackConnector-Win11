@@ -165,6 +165,29 @@ void QueueConnectionStateChanged(std::wstring deviceId, uint64_t generation)
 		message.release();
 }
 
+void QueuePhoneAudioFailure(std::wstring deviceId, uint64_t generation, std::wstring reason)
+{
+	if (g_shuttingDown || !IsWindow(g_hWnd))
+		return;
+	auto message = std::make_unique<PhoneAudioFailureMessage>();
+	message->deviceId = std::move(deviceId);
+	message->generation = generation;
+	message->reason = std::move(reason);
+	if (PostMessageW(g_hWnd, WM_PHONE_AUDIO_FAILED, 0, reinterpret_cast<LPARAM>(message.get())))
+		message.release();
+}
+
+void StopPhoneAudio(std::wstring_view deviceId)
+{
+	std::lock_guard lock(g_connectionMutex);
+	auto processor = g_phoneAudioProcessors.find(std::wstring(deviceId));
+	if (processor != g_phoneAudioProcessors.end())
+	{
+		processor->second->Stop();
+		g_phoneAudioProcessors.erase(processor);
+	}
+}
+
 void CloseCurrentConnection(std::wstring_view deviceId, uint64_t generation)
 {
 	std::lock_guard lock(g_connectionMutex);
@@ -172,6 +195,7 @@ void CloseCurrentConnection(std::wstring_view deviceId, uint64_t generation)
 	if (it == g_audioPlaybackConnections.end() || it->second.Generation != generation)
 		return;
 
+	StopPhoneAudio(deviceId);
 	it->second.Connection.Close();
 	g_audioPlaybackConnections.erase(it);
 	g_lastConnectionCloseTimes.insert_or_assign(std::wstring(deviceId), std::chrono::steady_clock::now());
@@ -307,6 +331,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		{
 			std::lock_guard lock(g_connectionMutex);
 			releasedConnections = !g_audioPlaybackConnections.empty();
+			for (auto& [_, processor] : g_phoneAudioProcessors)
+				processor->Stop();
+			g_phoneAudioProcessors.clear();
 			for (const auto& connection : g_audioPlaybackConnections)
 				connection.second.Connection.Close();
 			g_audioPlaybackConnections.clear();
@@ -339,6 +366,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		AppendLog(L"Application stopped");
 		{
 			std::lock_guard lock(g_connectionMutex);
+			for (auto& [_, processor] : g_phoneAudioProcessors)
+				processor->Stop();
+			g_phoneAudioProcessors.clear();
 			for (const auto& connection : g_audioPlaybackConnections)
 				connection.second.Connection.Close();
 			g_audioPlaybackConnections.clear();
@@ -425,11 +455,25 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			if (it == g_audioPlaybackConnections.end() ||
 				it->second.Generation != stateChanged->generation)
 				break;
+			StopPhoneAudio(stateChanged->deviceId);
 			g_audioPlaybackConnections.erase(it);
 			g_lastConnectionCloseTimes.insert_or_assign(stateChanged->deviceId, std::chrono::steady_clock::now());
 			AppendLog(L"Bluetooth audio connection closed: " + stateChanged->deviceId);
 			QueueDeviceListRefresh();
 		}
+	}
+	break;
+	case WM_PHONE_AUDIO_FAILED:
+	{
+		std::unique_ptr<PhoneAudioFailureMessage> failure(reinterpret_cast<PhoneAudioFailureMessage*>(lParam));
+		if (!failure || g_shuttingDown || !IsCurrentConnection(failure->deviceId, failure->generation))
+			break;
+		CloseCurrentConnection(failure->deviceId, failure->generation);
+		{
+			std::lock_guard lock(g_connectionMutex);
+			g_deviceErrorMessages[failure->deviceId] = failure->reason;
+		}
+		QueueDeviceListRefresh();
 	}
 	break;
 	case WM_DEVICE_LIST_CHANGED:
@@ -852,6 +896,40 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 		AppendLog(L"Obsolete connection completion ignored: " + deviceId);
 		co_return;
 	}
+	if (success && IsCurrentConnection(deviceId, generation))
+	{
+		// The row is connected only after its phone-only audio stream is ready.
+		std::shared_ptr<PhoneAudioProcessor> processor;
+		try
+		{
+			processor = std::make_shared<PhoneAudioProcessor>(deviceId, generation);
+			auto ready = processor->Start();
+			co_await winrt::resume_background();
+			errorMessage = ready.get();
+		}
+		catch (...)
+		{
+			errorMessage = L"Could not start phone-only audio processor";
+			LOG_CAUGHT_EXCEPTION();
+		}
+		co_await uiContext;
+		if (g_shuttingDown || !IsCurrentConnection(deviceId, generation))
+		{
+			if (processor)
+				processor->Stop();
+			co_return;
+		}
+		if (errorMessage.empty())
+		{
+			std::lock_guard lock(g_connectionMutex);
+			g_phoneAudioProcessors.insert_or_assign(deviceId, std::move(processor));
+		}
+		else
+		{
+			processor->Stop();
+			success = false;
+		}
+	}
 
 	if (success && IsCurrentConnection(deviceId, generation))
 	{
@@ -864,7 +942,6 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			g_deviceErrorMessages.erase(deviceId);
 		}
 		AppendLog(L"Connection opened: " + deviceId);
-		WatchPhoneAudioSession(deviceId, generation);
 	}
 	else if (!g_shuttingDown)
 	{
@@ -942,6 +1019,7 @@ winrt::fire_and_forget AutoConnectDevice(std::wstring deviceId)
 			auto it = g_audioPlaybackConnections.find(deviceId);
 			if (it != g_audioPlaybackConnections.end() && !it->second.Connecting)
 			{
+				StopPhoneAudio(deviceId);
 				it->second.Connection.Close();
 				g_audioPlaybackConnections.erase(it);
 			}
@@ -985,6 +1063,7 @@ void DisconnectDevice(std::wstring_view deviceId)
 		auto it = g_audioPlaybackConnections.find(std::wstring(deviceId));
 		if (it != g_audioPlaybackConnections.end())
 		{
+			StopPhoneAudio(deviceId);
 			it->second.Connection.Close();
 			g_audioPlaybackConnections.erase(it);
 			g_lastConnectionCloseTimes.insert_or_assign(std::wstring(deviceId), std::chrono::steady_clock::now());
@@ -1036,6 +1115,7 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 				auto it = g_audioPlaybackConnections.find(deviceId);
 				if (it != g_audioPlaybackConnections.end())
 				{
+					StopPhoneAudio(deviceId);
 					it->second.Connection.Close();
 					g_audioPlaybackConnections.erase(it);
 					g_lastConnectionCloseTimes.insert_or_assign(deviceId, std::chrono::steady_clock::now());
@@ -1388,7 +1468,6 @@ void SetupDevicePicker()
 		const auto value = sender.as<Slider>().Value();
 		g_playbackVolume.store(std::clamp(value / 100.0, 0.0, 1.0));
 		volumeValue.Text(std::to_wstring(static_cast<int>(std::lround(value))) + L"%");
-		ApplyPlaybackVolume(false, true);
 	});
 
 	Button settingsButton;
