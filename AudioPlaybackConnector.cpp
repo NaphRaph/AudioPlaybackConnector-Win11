@@ -8,7 +8,7 @@ winrt::fire_and_forget ConnectDevice(std::wstring);
 winrt::fire_and_forget ConnectDevice(DeviceInformation);
 winrt::fire_and_forget AutoConnectDevice(std::wstring);
 void RefreshDevicePicker();
-void DisconnectDevice(std::wstring_view);
+winrt::fire_and_forget DisconnectDevice(std::wstring);
 winrt::fire_and_forget RepairDeviceAudio(std::wstring);
 void SetupDevicePicker();
 void SetupSvgIcon();
@@ -186,6 +186,25 @@ void StopPhoneAudio(std::wstring_view deviceId)
 		processor->second->Stop();
 		g_phoneAudioProcessors.erase(processor);
 	}
+}
+
+winrt::Windows::Foundation::IAsyncAction StopPhoneAudioAndWait(std::wstring deviceId)
+{
+	std::shared_ptr<PhoneAudioProcessor> processor;
+	{
+		std::lock_guard lock(g_connectionMutex);
+		auto it = g_phoneAudioProcessors.find(deviceId);
+		if (it != g_phoneAudioProcessors.end())
+		{
+			processor = it->second;
+			processor->Stop();
+		}
+	}
+	if (!processor)
+		co_return;
+	co_await winrt::resume_background();
+	if (!processor->WaitStopped())
+		AppendLog(L"Phone audio worker stop timed out: " + deviceId);
 }
 
 void CloseCurrentConnection(std::wstring_view deviceId, uint64_t generation)
@@ -926,7 +945,14 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 		}
 		else
 		{
-			processor->Stop();
+			if (processor)
+			{
+				processor->Stop();
+				co_await winrt::resume_background();
+				if (!processor->WaitStopped())
+					AppendLog(L"Phone audio worker startup stop timed out: " + deviceId);
+				co_await uiContext;
+			}
 			success = false;
 		}
 	}
@@ -1013,6 +1039,10 @@ winrt::fire_and_forget AutoConnectDevice(std::wstring deviceId)
 		co_await uiContext;
 		if (g_shuttingDown)
 			co_return;
+		co_await StopPhoneAudioAndWait(deviceId);
+		co_await uiContext;
+		if (g_shuttingDown)
+			co_return;
 
 		{
 			std::lock_guard lock(g_connectionMutex);
@@ -1055,20 +1085,33 @@ winrt::fire_and_forget AutoConnectDevice(std::wstring deviceId)
 	}
 }
 
-void DisconnectDevice(std::wstring_view deviceId)
+winrt::fire_and_forget DisconnectDevice(std::wstring deviceId)
 {
-	AppendLog(L"Disconnect requested: " + std::wstring(deviceId));
+	auto uiContext = winrt::apartment_context();
+	AppendLog(L"Disconnect requested: " + deviceId);
+	uint64_t generation = 0;
 	{
 		std::lock_guard lock(g_connectionMutex);
-		auto it = g_audioPlaybackConnections.find(std::wstring(deviceId));
-		if (it != g_audioPlaybackConnections.end())
-		{
-			StopPhoneAudio(deviceId);
-			it->second.Connection.Close();
-			g_audioPlaybackConnections.erase(it);
-			g_lastConnectionCloseTimes.insert_or_assign(std::wstring(deviceId), std::chrono::steady_clock::now());
-		}
-		g_deviceErrorMessages.erase(std::wstring(deviceId));
+		auto it = g_audioPlaybackConnections.find(deviceId);
+		if (it == g_audioPlaybackConnections.end())
+			co_return;
+		generation = it->second.Generation;
+		if (!g_disconnectingDevices.insert(deviceId).second)
+			co_return;
+	}
+	auto guard = wil::scope_exit([deviceId] {
+		std::lock_guard lock(g_connectionMutex);
+		g_disconnectingDevices.erase(deviceId);
+		QueueDeviceListRefresh();
+	});
+	co_await StopPhoneAudioAndWait(deviceId);
+	co_await uiContext;
+	if (g_shuttingDown)
+		co_return;
+	CloseCurrentConnection(deviceId, generation);
+	{
+		std::lock_guard lock(g_connectionMutex);
+		g_deviceErrorMessages.erase(deviceId);
 	}
 	QueueDeviceListRefresh();
 }
@@ -1110,6 +1153,10 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 				AppendLog(L"Audio repair deferred while connection is still opening: " + deviceId);
 				co_return;
 			}
+			co_await StopPhoneAudioAndWait(deviceId);
+			co_await uiContext;
+			if (g_shuttingDown)
+				co_return;
 			{
 				std::lock_guard lock(g_connectionMutex);
 				auto it = g_audioPlaybackConnections.find(deviceId);

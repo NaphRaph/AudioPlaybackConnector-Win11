@@ -40,7 +40,6 @@ void DefaultSettings()
 	g_playbackVolume = DEFAULT_PLAYBACK_VOLUME;
 	g_sessionVolumeReferences.clear();
 	g_phoneEndpointGuids.clear();
-	g_appliedPhoneSessions.clear();
 	g_lastDevices.clear();
 }
 

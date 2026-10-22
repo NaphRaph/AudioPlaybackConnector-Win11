@@ -95,8 +95,7 @@ float MapPlaybackVolumeToSession(float slider, float reference)
 	return reference + (1.0f - reference) * ((slider - neutral) / (1.0f - neutral));
 }
 
-bool SetPhoneSessionVolume(std::wstring_view deviceId, float slider,
-	bool onlyNewSession, bool allowUnmute)
+bool SetPhoneSessionVolume(std::wstring_view deviceId, float slider)
 {
 	std::wstring endpointGuid;
 	{
@@ -165,14 +164,6 @@ bool SetPhoneSessionVolume(std::wstring_view deviceId, float slider,
 			CoTaskMemFree(rawSessionId);
 			if (!ContainsIgnoreCase(sessionId, endpointGuid))
 				continue;
-			LPWSTR rawInstanceId = nullptr;
-			if (FAILED(session2->GetSessionInstanceIdentifier(&rawInstanceId)))
-				continue;
-			std::wstring instanceId(rawInstanceId);
-			CoTaskMemFree(rawInstanceId);
-			found = true;
-			if (onlyNewSession && g_appliedPhoneSessions.find(instanceId) != g_appliedPhoneSessions.end())
-				continue;
 			auto volume = session.try_as<ISimpleAudioVolume>();
 			if (!volume)
 				continue;
@@ -189,66 +180,28 @@ bool SetPhoneSessionVolume(std::wstring_view deviceId, float slider,
 					AppendLog(L"Phone session neutral reference: " + endpointGuid + L" at " +
 						std::to_wstring(static_cast<int>(std::lround(reference * 100.0f))) + L"%");
 			}
-			if (allowUnmute && slider > 0.0f)
-				volume->SetMute(FALSE, nullptr);
 			const auto target = MapPlaybackVolumeToSession(slider, reference);
-			result = volume->SetMasterVolume(target, nullptr);
-			if (FAILED(result))
+			const bool changed = std::abs(current - target) > 0.001f;
+			if (changed)
 			{
-				AppendHresultLog(L"Set phone session volume failed", result);
-				continue;
+				result = volume->SetMasterVolume(target, nullptr);
+				if (FAILED(result))
+				{
+					AppendHresultLog(L"Set phone session volume failed", result);
+					continue;
+				}
 			}
-			if (slider >= static_cast<float>(DEFAULT_PLAYBACK_VOLUME))
-				g_appliedPhoneSessions.erase(instanceId);
-			else
-				g_appliedPhoneSessions.insert(std::move(instanceId));
-			AppendLog(L"Applied phone-only session volume: slider " +
-				std::to_wstring(static_cast<int>(std::lround(slider * 100.0f))) + L"%, session " +
-				std::to_wstring(static_cast<int>(std::lround(target * 100.0f))) + L"%");
+			found = true;
+			if (changed)
+				AppendLog(L"Applied phone-only session volume: slider " +
+					std::to_wstring(static_cast<int>(std::lround(slider * 100.0f))) + L"%, session " +
+					std::to_wstring(static_cast<int>(std::lround(target * 100.0f))) + L"%");
 		}
+	}
+	if (found && slider >= static_cast<float>(DEFAULT_PLAYBACK_VOLUME))
+	{
+		std::lock_guard lock(g_volumeMutex);
+		g_sessionVolumeReferences.erase(endpointGuid);
 	}
 	return found;
-}
-
-winrt::fire_and_forget ApplyPlaybackVolume(bool logResult = false, bool allowUnmute = false)
-{
-	co_await winrt::resume_background();
-	std::lock_guard applyLock(g_volumeApplyMutex);
-	std::vector<std::wstring> deviceIds;
-	{
-		std::lock_guard lock(g_connectionMutex);
-		for (const auto& [deviceId, entry] : g_audioPlaybackConnections)
-		{
-			if (!entry.Connecting)
-				deviceIds.push_back(deviceId);
-		}
-	}
-	const auto slider = static_cast<float>(g_playbackVolume.load());
-	for (const auto& deviceId : deviceIds)
-	{
-		if (g_shuttingDown)
-			co_return;
-		if (!SetPhoneSessionVolume(deviceId, slider, false, allowUnmute) && logResult)
-			AppendLog(L"Phone audio session not yet available for: " + deviceId);
-	}
-}
-
-winrt::fire_and_forget WatchPhoneAudioSession(std::wstring deviceId, uint64_t generation)
-{
-	co_await winrt::resume_background();
-	while (!g_shuttingDown)
-	{
-		{
-			std::lock_guard lock(g_connectionMutex);
-			auto entry = g_audioPlaybackConnections.find(deviceId);
-			if (entry == g_audioPlaybackConnections.end() || entry->second.Generation != generation ||
-				entry->second.Connecting)
-				co_return;
-		}
-		{
-			std::lock_guard applyLock(g_volumeApplyMutex);
-			SetPhoneSessionVolume(deviceId, static_cast<float>(g_playbackVolume.load()), true, false);
-		}
-		co_await winrt::resume_after(std::chrono::seconds(2));
-	}
 }

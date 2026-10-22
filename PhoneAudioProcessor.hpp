@@ -10,7 +10,8 @@ class PhoneAudioProcessor : public std::enable_shared_from_this<PhoneAudioProces
 {
 public:
 	PhoneAudioProcessor(std::wstring deviceId, uint64_t generation)
-		: m_deviceId(std::move(deviceId)), m_generation(generation) {}
+		: m_deviceId(std::move(deviceId)), m_generation(generation),
+		m_stoppedFuture(m_stopped.get_future().share()) {}
 
 	std::future<std::wstring> Start()
 	{
@@ -20,6 +21,10 @@ public:
 	}
 
 	void Stop() noexcept { m_stop = true; }
+	bool WaitStopped() const
+	{
+		return m_stoppedFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
+	}
 
 private:
 	static void Check(HRESULT result)
@@ -56,6 +61,7 @@ private:
 		const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 		bool started = false;
 		bool muted = false;
+		std::wstring failureReason;
 		std::wstring_view stage = L"Initialize audio worker";
 		try
 		{
@@ -66,6 +72,12 @@ private:
 				__uuidof(IMMDeviceEnumerator), enumerator.put_void()));
 
 			std::wstring endpointGuid;
+			{
+				std::lock_guard lock(g_volumeMutex);
+				auto cached = g_phoneEndpointGuids.find(m_deviceId);
+				if (cached != g_phoneEndpointGuids.end())
+					endpointGuid = cached->second;
+			}
 			winrt::com_ptr<IMMDevice> input;
 			HRESULT endpointError = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
 			// Windows can report Opened before its A2DP capture endpoint is
@@ -82,8 +94,17 @@ private:
 					const std::wstring captureId = L"{0.0.1.00000000}." + endpointGuid;
 					endpointError = enumerator->GetDevice(captureId.c_str(), input.put());
 					if (SUCCEEDED(endpointError))
-						break;
-					endpointGuid.clear();
+					{
+						DWORD state = 0;
+						endpointError = input->GetState(&state);
+						if (SUCCEEDED(endpointError) && state == DEVICE_STATE_ACTIVE)
+							break;
+						if (SUCCEEDED(endpointError))
+							endpointError = HRESULT_FROM_WIN32(ERROR_NOT_READY);
+						input = nullptr;
+					}
+					else
+						endpointGuid.clear();
 				}
 				std::this_thread::sleep_for(std::chrono::milliseconds(100));
 			}
@@ -167,7 +188,7 @@ private:
 				{
 					std::lock_guard lock(g_volumeApplyMutex);
 					if (!m_stop)
-						muted = SetPhoneSessionVolume(m_deviceId, 0.0f, true, false) || muted;
+						muted = SetPhoneSessionVolume(m_deviceId, 0.0f) || muted;
 					nextSessionCheck = now + std::chrono::milliseconds(500);
 				}
 				stage = L"Capture phone audio";
@@ -222,7 +243,7 @@ private:
 			if (!started)
 				m_started.set_value(reason);
 			else if (!m_stop && !g_shuttingDown)
-				QueuePhoneAudioFailure(m_deviceId, m_generation, reason);
+				failureReason = reason;
 		}
 		catch (...)
 		{
@@ -231,19 +252,34 @@ private:
 			if (!started)
 				m_started.set_value(reason);
 			else if (!m_stop && !g_shuttingDown)
-				QueuePhoneAudioFailure(m_deviceId, m_generation, reason);
+				failureReason = reason;
 		}
 		if (muted)
 		{
-			std::lock_guard lock(g_volumeApplyMutex);
-			SetPhoneSessionVolume(m_deviceId, static_cast<float>(DEFAULT_PLAYBACK_VOLUME), false, true);
+			try
+			{
+				std::lock_guard lock(g_volumeApplyMutex);
+				SetPhoneSessionVolume(m_deviceId, static_cast<float>(DEFAULT_PLAYBACK_VOLUME));
+			}
+			catch (...)
+			{
+				AppendLog(L"Could not restore phone audio session: " + m_deviceId);
+			}
 		}
 		if (SUCCEEDED(apartment))
 			CoUninitialize();
+		m_stopped.set_value();
+		if (!failureReason.empty() && !m_stop && !g_shuttingDown)
+		{
+			try { QueuePhoneAudioFailure(m_deviceId, m_generation, std::move(failureReason)); }
+			catch (...) { AppendLog(L"Could not report phone audio failure"); }
+		}
 	}
 
 	std::wstring m_deviceId;
 	uint64_t m_generation{};
 	std::atomic_bool m_stop{ false };
 	std::promise<std::wstring> m_started;
+	std::promise<void> m_stopped;
+	std::shared_future<void> m_stoppedFuture;
 };
