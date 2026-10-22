@@ -22,15 +22,12 @@ constexpr UINT SHUTDOWN_RELEASE_DELAY_MS = 2000;
 constexpr auto CONNECTION_RELEASE_COOLDOWN = std::chrono::milliseconds(1500);
 constexpr auto CONNECTION_OPENED_TIMEOUT = std::chrono::seconds(5);
 constexpr auto AUTO_CONNECT_STARTUP_DELAY = std::chrono::seconds(3);
-constexpr auto AUTO_CONNECT_PRIME_HOLD = std::chrono::milliseconds(750);
-constexpr auto AUTO_CONNECT_RELEASE_DELAY = std::chrono::seconds(3);
 constexpr int AUDIO_REPAIR_MAX_ATTEMPTS = 3;
 // OpenAsync can take around 15 seconds on the affected Bluetooth stack.
 // This is only a UI/repair observation timeout, never permission to close
 // an OpenAsync that is still running.
 constexpr auto AUDIO_REPAIR_CONNECTION_TIMEOUT = std::chrono::seconds(25);
 constexpr auto AUDIO_REPAIR_POLL_INTERVAL = std::chrono::milliseconds(250);
-constexpr auto AUDIO_REPAIR_PRIME_HOLD = std::chrono::milliseconds(750);
 constexpr double DEFAULT_PLAYBACK_VOLUME = 0.5;
 constexpr int VOLUME_CONTROL_VERSION = 5;
 

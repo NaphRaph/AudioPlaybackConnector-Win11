@@ -13,11 +13,9 @@ public:
 		: m_deviceId(std::move(deviceId)), m_generation(generation),
 		m_stoppedFuture(m_stopped.get_future().share()) {}
 
-	std::future<std::wstring> Start()
+	void Start()
 	{
-		auto started = m_started.get_future();
 		std::thread([self = shared_from_this()] { self->Run(); }).detach();
-		return started;
 	}
 
 	void Stop() noexcept { m_stop = true; }
@@ -59,7 +57,6 @@ private:
 	void Run()
 	{
 		const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-		bool started = false;
 		bool muted = false;
 		std::wstring failureReason;
 		std::wstring_view stage = L"Initialize audio worker";
@@ -79,11 +76,12 @@ private:
 					endpointGuid = cached->second;
 			}
 			winrt::com_ptr<IMMDevice> input;
-			HRESULT endpointError = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
-			// Windows can report Opened before its A2DP capture endpoint is
-			// published by MMDevAPI. Wait here, off the UI thread, without closing
-			// the still-healthy Bluetooth connection.
-			for (int attempt = 0; attempt < 80 && !m_stop && !g_shuttingDown; ++attempt)
+			// A paused phone can leave its A2DP capture endpoint unplugged even
+			// though Bluetooth OpenAsync and State both report success. Keep the
+			// connection open and start the stream when playback activates it.
+			bool waitingLogged = false;
+			const auto waitStarted = std::chrono::steady_clock::now();
+			while (!m_stop && !g_shuttingDown)
 			{
 				stage = L"Find phone audio endpoint";
 				if (endpointGuid.empty())
@@ -92,24 +90,27 @@ private:
 				{
 					stage = L"Open phone audio endpoint";
 					const std::wstring captureId = L"{0.0.1.00000000}." + endpointGuid;
-					endpointError = enumerator->GetDevice(captureId.c_str(), input.put());
-					if (SUCCEEDED(endpointError))
+					const HRESULT endpointResult = enumerator->GetDevice(captureId.c_str(), input.put());
+					if (SUCCEEDED(endpointResult))
 					{
 						DWORD state = 0;
-						endpointError = input->GetState(&state);
-						if (SUCCEEDED(endpointError) && state == DEVICE_STATE_ACTIVE)
+						if (SUCCEEDED(input->GetState(&state)) && state == DEVICE_STATE_ACTIVE)
 							break;
-						if (SUCCEEDED(endpointError))
-							endpointError = HRESULT_FROM_WIN32(ERROR_NOT_READY);
 						input = nullptr;
 					}
 					else
 						endpointGuid.clear();
 				}
-				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+				if (!waitingLogged &&
+					std::chrono::steady_clock::now() - waitStarted >= std::chrono::seconds(1))
+				{
+					AppendLog(L"Waiting for phone audio playback: " + m_deviceId);
+					waitingLogged = true;
+				}
+				std::this_thread::sleep_for(std::chrono::milliseconds(250));
 			}
-			if (!input)
-				throw winrt::hresult_error(endpointError);
+			if (m_stop || g_shuttingDown || !input)
+				throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_CANCELLED));
 			winrt::com_ptr<IAudioClient> captureClient;
 			Check(input->Activate(__uuidof(IAudioClient), CLSCTX_ALL,
 				nullptr, captureClient.put_void()));
@@ -161,8 +162,6 @@ private:
 			Check(renderClient->Start());
 			try { Check(captureClient->Start()); }
 			catch (...) { renderClient->Stop(); throw; }
-			m_started.set_value(std::wstring{});
-			started = true;
 			AppendLog(L"Phone-only audio processor started: " + m_deviceId);
 
 			auto nextSessionCheck = std::chrono::steady_clock::now();
@@ -239,20 +238,20 @@ private:
 		catch (const winrt::hresult_error& error)
 		{
 			const auto reason = FormatError(stage, error.code());
-			AppendLog(L"Phone audio processor failed: " + m_deviceId + L"; " + reason);
-			if (!started)
-				m_started.set_value(reason);
-			else if (!m_stop && !g_shuttingDown)
+			if (!m_stop && !g_shuttingDown)
+			{
+				AppendLog(L"Phone audio processor failed: " + m_deviceId + L"; " + reason);
 				failureReason = reason;
+			}
 		}
 		catch (...)
 		{
 			const std::wstring reason = std::wstring(stage) + L": unexpected failure";
-			AppendLog(L"Phone audio processor failed: " + m_deviceId + L"; " + reason);
-			if (!started)
-				m_started.set_value(reason);
-			else if (!m_stop && !g_shuttingDown)
+			if (!m_stop && !g_shuttingDown)
+			{
+				AppendLog(L"Phone audio processor failed: " + m_deviceId + L"; " + reason);
 				failureReason = reason;
+			}
 		}
 		if (muted)
 		{
@@ -279,7 +278,6 @@ private:
 	std::wstring m_deviceId;
 	uint64_t m_generation{};
 	std::atomic_bool m_stop{ false };
-	std::promise<std::wstring> m_started;
 	std::promise<void> m_stopped;
 	std::shared_future<void> m_stoppedFuture;
 };

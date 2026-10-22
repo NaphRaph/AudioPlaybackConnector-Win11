@@ -917,43 +917,20 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 	}
 	if (success && IsCurrentConnection(deviceId, generation))
 	{
-		// The row is connected only after its phone-only audio stream is ready.
-		std::shared_ptr<PhoneAudioProcessor> processor;
+		// Bluetooth is connected even if the phone is currently paused. The
+		// audio worker waits for the capture endpoint to become active.
 		try
 		{
-			processor = std::make_shared<PhoneAudioProcessor>(deviceId, generation);
-			auto ready = processor->Start();
-			co_await winrt::resume_background();
-			errorMessage = ready.get();
+			auto processor = std::make_shared<PhoneAudioProcessor>(deviceId, generation);
+			processor->Start();
+			std::lock_guard lock(g_connectionMutex);
+			g_phoneAudioProcessors.insert_or_assign(deviceId, std::move(processor));
 		}
 		catch (...)
 		{
 			errorMessage = L"Could not start phone-only audio processor";
-			LOG_CAUGHT_EXCEPTION();
-		}
-		co_await uiContext;
-		if (g_shuttingDown || !IsCurrentConnection(deviceId, generation))
-		{
-			if (processor)
-				processor->Stop();
-			co_return;
-		}
-		if (errorMessage.empty())
-		{
-			std::lock_guard lock(g_connectionMutex);
-			g_phoneAudioProcessors.insert_or_assign(deviceId, std::move(processor));
-		}
-		else
-		{
-			if (processor)
-			{
-				processor->Stop();
-				co_await winrt::resume_background();
-				if (!processor->WaitStopped())
-					AppendLog(L"Phone audio worker startup stop timed out: " + deviceId);
-				co_await uiContext;
-			}
 			success = false;
+			LOG_CAUGHT_EXCEPTION();
 		}
 	}
 
@@ -1001,7 +978,7 @@ winrt::fire_and_forget AutoConnectDevice(std::wstring deviceId)
 		QueueDeviceListRefresh();
 	});
 
-	AppendLog(L"Automatic connection warm-up started: " + deviceId);
+	AppendLog(L"Automatic connection started: " + deviceId);
 	QueueDeviceListRefresh();
 
 	try
@@ -1013,70 +990,24 @@ winrt::fire_and_forget AutoConnectDevice(std::wstring deviceId)
 		if (g_shuttingDown)
 			co_return;
 
-		// The first A2DP open after boot frequently creates a link that the phone
-		// considers connected but that never delivers samples. Use that first open
-		// only to initialise the Windows/phone transport, then release it fully and
-		// make the second open the user-visible connection.
-		ConnectDevice(deviceId);
-		const auto primed = co_await WaitForDeviceConnection(
-			deviceId, std::chrono::duration_cast<std::chrono::milliseconds>(
-				AUDIO_REPAIR_CONNECTION_TIMEOUT));
-		co_await uiContext;
-		if (g_shuttingDown)
-			co_return;
-		if (!primed)
-		{
-			// A timeout is not an OpenAsync failure. Closing the still-pending
-			// connection aborts it (0x800703E3) and can leave the Bluetooth
-			// transport returning 0x8007001F on every subsequent attempt.
-			AppendLog((IsDeviceConnectionInProgress(deviceId) ?
-				L"Automatic warm-up still connecting; leaving it alone: " :
-				L"Automatic warm-up failed; not reconnecting: ") + deviceId);
-			co_return;
-		}
-
-		co_await winrt::resume_after(AUTO_CONNECT_PRIME_HOLD);
-		co_await uiContext;
-		if (g_shuttingDown)
-			co_return;
-		co_await StopPhoneAudioAndWait(deviceId);
-		co_await uiContext;
-		if (g_shuttingDown)
-			co_return;
-
-		{
-			std::lock_guard lock(g_connectionMutex);
-			auto it = g_audioPlaybackConnections.find(deviceId);
-			if (it != g_audioPlaybackConnections.end() && !it->second.Connecting)
-			{
-				StopPhoneAudio(deviceId);
-				it->second.Connection.Close();
-				g_audioPlaybackConnections.erase(it);
-			}
-			else
-			{
-				AppendLog(L"Automatic warm-up state changed; leaving connection alone: " + deviceId);
-				co_return;
-			}
-			g_lastConnectionCloseTimes.insert_or_assign(
-				deviceId, std::chrono::steady_clock::now());
-			g_deviceErrorMessages.erase(deviceId);
-		}
-		QueueDeviceListRefresh();
-
-		AppendLog(L"Automatic connection warm-up complete; waiting for full A2DP release: " +
-			deviceId);
-		co_await winrt::resume_after(AUTO_CONNECT_RELEASE_DELAY);
-		co_await uiContext;
-		if (g_shuttingDown)
-			co_return;
-
+		// Keep the first opened connection. The audio worker waits for playback
+		// if the phone has not yet activated its capture endpoint.
 		ConnectDevice(deviceId);
 		const auto connected = co_await WaitForDeviceConnection(
 			deviceId, std::chrono::duration_cast<std::chrono::milliseconds>(
 				AUDIO_REPAIR_CONNECTION_TIMEOUT));
-		AppendLog((connected ? L"Automatic connection completed: " :
-			L"Automatic connection failed: ") + deviceId);
+		co_await uiContext;
+		if (g_shuttingDown)
+			co_return;
+		if (!connected)
+		{
+			// A timeout is not an OpenAsync failure. Do not abort a pending open.
+			AppendLog((IsDeviceConnectionInProgress(deviceId) ?
+				L"Automatic connection still opening; leaving it alone: " :
+				L"Automatic connection failed: ") + deviceId);
+			co_return;
+		}
+		AppendLog(L"Automatic connection completed: " + deviceId);
 	}
 	catch (...)
 	{
@@ -1135,10 +1066,8 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 	AppendLog(L"Audio repair requested: " + deviceId);
 	QueueDeviceListRefresh();
 
-	// Repeated manual repairs have proven able to recover a Windows A2DP
-	// transport that a single reconnect cannot. Automate that bounded sequence,
-	// using longer release delays on later attempts and stopping as soon as this
-	// process owns an active audio session.
+	// Retry with bounded release delays while Bluetooth cannot open. Keep the
+	// first opened connection; its worker waits if the phone is paused.
 	constexpr std::chrono::milliseconds releaseDelays[AUDIO_REPAIR_MAX_ATTEMPTS] = {
 		std::chrono::seconds(3), std::chrono::seconds(5), std::chrono::seconds(8)
 	};
@@ -1197,15 +1126,9 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 				continue;
 			}
 
-			if (attempt + 1 == AUDIO_REPAIR_MAX_ATTEMPTS)
-			{
-				AppendLog(L"Audio repair completed: " + deviceId);
-				co_return;
-			}
-
-			AppendLog(L"Audio repair primed A2DP transport on attempt " +
+			AppendLog(L"Audio repair completed on attempt " +
 				std::to_wstring(attempt + 1) + L": " + deviceId);
-			co_await winrt::resume_after(AUDIO_REPAIR_PRIME_HOLD);
+			co_return;
 		}
 	}
 	catch (...)
