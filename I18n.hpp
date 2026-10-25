@@ -17,6 +17,7 @@ struct YMOData
 
 void LoadTranslateData()
 {
+	hashToStrMap.clear();
 	auto hRes = FindResourceExW(g_hInst, L"YMO", MAKEINTRESOURCEW(1), GetThreadUILanguage());
 	if (hRes)
 	{
@@ -32,7 +33,7 @@ void LoadTranslateData()
 				{
 					auto hash = ymo->table[i].hash;
 					auto offset = ymo->table[i].offset;
-					auto str = reinterpret_cast<const wchar_t*>(reinterpret_cast<const uint8_t*>(hResData) + offset);
+					auto str = reinterpret_cast<const wchar_t*>(reinterpret_cast<const uint8_t*>(ymo) + offset);
 					hashToStrMap.emplace(hash, str);
 				}
 			}

@@ -48,6 +48,12 @@ msgstr ""
 msgid "Bluetooth Settings"
 msgstr ""
 
+msgid "Open Logs Folder"
+msgstr ""
+
+msgid "Playback volume"
+msgstr ""
+
 #: AudioPlaybackConnector.cpp:287
 msgid "Connecting"
 msgstr ""
@@ -58,6 +64,9 @@ msgstr ""
 
 #: AudioPlaybackConnector.cpp:326
 msgid "The operation was denied by the system"
+msgstr ""
+
+msgid "The Bluetooth audio channel did not become ready"
 msgstr ""
 
 #: AudioPlaybackConnector.cpp:337
@@ -74,6 +83,27 @@ msgstr ""
 
 #: AudioPlaybackConnector.cpp:...
 msgid "Disconnect"
+msgstr ""
+
+msgid "Repair audio"
+msgstr ""
+
+msgid "Repairing audio"
+msgstr ""
+
+msgid "Restart Bluetooth"
+msgstr ""
+
+msgid "Restarting Bluetooth"
+msgstr ""
+
+msgid "Bluetooth recovery was not completed"
+msgstr ""
+
+msgid "Restarting the computer's Bluetooth will temporarily disconnect every Bluetooth device, including keyboards and mice. Restart it and reconnect this phone?"
+msgstr ""
+
+msgid "Windows could not restart Bluetooth. Open Bluetooth Settings to switch it off and on manually, then reconnect the phone."
 msgstr ""
 
 #: AudioPlaybackConnector.cpp:...
