@@ -91,6 +91,21 @@ msgstr ""
 msgid "Repairing audio"
 msgstr ""
 
+msgid "Restart Bluetooth"
+msgstr ""
+
+msgid "Restarting Bluetooth"
+msgstr ""
+
+msgid "Bluetooth recovery was not completed"
+msgstr ""
+
+msgid "Restarting the computer's Bluetooth will temporarily disconnect every Bluetooth device, including keyboards and mice. Restart it and reconnect this phone?"
+msgstr ""
+
+msgid "Windows could not restart Bluetooth. Open Bluetooth Settings to switch it off and on manually, then reconnect the phone."
+msgstr ""
+
 #: AudioPlaybackConnector.cpp:...
 msgid "Cancel"
 msgstr ""

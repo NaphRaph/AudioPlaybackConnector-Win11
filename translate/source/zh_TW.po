@@ -93,6 +93,21 @@ msgstr "修復聲音"
 msgid "Repairing audio"
 msgstr "正在修復"
 
+msgid "Restart Bluetooth"
+msgstr "重新啟動藍牙"
+
+msgid "Restarting Bluetooth"
+msgstr "正在重新啟動藍牙"
+
+msgid "Bluetooth recovery was not completed"
+msgstr "藍牙復原未完成"
+
+msgid "Restarting the computer's Bluetooth will temporarily disconnect every Bluetooth device, including keyboards and mice. Restart it and reconnect this phone?"
+msgstr "重新啟動電腦藍牙會暫時中斷所有藍牙裝置，包括鍵盤和滑鼠。是否重新啟動藍牙並重新連線這支手機？"
+
+msgid "Windows could not restart Bluetooth. Open Bluetooth Settings to switch it off and on manually, then reconnect the phone."
+msgstr "Windows 無法完成藍牙重新啟動。請在藍牙設定中手動關閉並重新開啟藍牙，再重新連線手機。"
+
 #: AudioPlaybackConnector.cpp:...
 msgid "Cancel"
 msgstr "取消"

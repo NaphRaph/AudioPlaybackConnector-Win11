@@ -2,6 +2,7 @@
 
 #include "resource.h"
 #include "PhoneAudioGain.hpp"
+#include "BluetoothRecoveryPolicy.hpp"
 
 using namespace winrt::Windows::Data::Json;
 using namespace winrt::Windows::Devices::Enumeration;
@@ -68,6 +69,7 @@ DeviceWatcher g_deviceWatcher = nullptr;
 std::unordered_map<std::wstring, AudioPlaybackConnectionEntry> g_audioPlaybackConnections;
 std::unordered_map<std::wstring, std::shared_ptr<PhoneAudioProcessor>> g_phoneAudioProcessors;
 std::unordered_map<std::wstring, std::wstring> g_deviceErrorMessages;
+std::unordered_set<std::wstring> g_radioRecoveryCandidates;
 std::unordered_map<std::wstring, std::wstring> g_availableDeviceNames;
 std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> g_lastConnectionCloseTimes;
 std::unordered_set<std::wstring> g_repairingDevices;
@@ -99,6 +101,8 @@ std::atomic_uint64_t g_deviceWatcherGeneration = 0;
 std::atomic_bool g_deviceEnumerationCompleted = false;
 std::atomic_bool g_devicePickerVisible = false;
 std::atomic_bool g_shuttingDown = false;
+std::atomic_bool g_radioRecoveryInProgress = false;
+std::atomic_bool g_exitPendingAfterRadioRecovery = false;
 
 #include "Util.hpp"
 #include "Logging.hpp"

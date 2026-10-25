@@ -10,6 +10,7 @@ winrt::fire_and_forget AutoConnectDevice(std::wstring);
 void RefreshDevicePicker();
 winrt::fire_and_forget DisconnectDevice(std::wstring);
 winrt::fire_and_forget RepairDeviceAudio(std::wstring);
+winrt::fire_and_forget RecoverBluetoothRadio(std::wstring);
 void SetupDevicePicker();
 void SetupSvgIcon();
 void UpdateNotifyIcon();
@@ -324,6 +325,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 	case WM_CLOSE:
 	{
+		if (g_radioRecoveryInProgress)
+		{
+			g_exitPendingAfterRadioRecovery = true;
+			AppendLog(L"Application exit deferred until Bluetooth radio recovery finishes");
+			break;
+		}
 		if (g_shuttingDown.exchange(true))
 			break;
 		AppendLog(L"Application shutdown requested");
@@ -357,6 +364,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				connection.second.Connection.Close();
 			g_audioPlaybackConnections.clear();
 			g_deviceErrorMessages.clear();
+			g_radioRecoveryCandidates.clear();
 		}
 
 		if (!g_reconnect)
@@ -392,6 +400,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				connection.second.Connection.Close();
 			g_audioPlaybackConnections.clear();
 			g_deviceErrorMessages.clear();
+			g_radioRecoveryCandidates.clear();
 		}
 		Shell_NotifyIconW(NIM_DELETE, &g_nid);
 		PostQuitMessage(0);
@@ -491,6 +500,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		{
 			std::lock_guard lock(g_connectionMutex);
 			g_deviceErrorMessages[failure->deviceId] = failure->reason;
+			g_radioRecoveryCandidates.erase(failure->deviceId);
 		}
 		QueueDeviceListRefresh();
 	}
@@ -689,6 +699,14 @@ void SetupMenu()
 
 winrt::fire_and_forget ConnectDevice(std::wstring deviceId)
 {
+	if (g_radioRecoveryInProgress)
+		co_return;
+	{
+		std::lock_guard lock(g_connectionMutex);
+		g_deviceErrorMessages.erase(deviceId);
+		g_radioRecoveryCandidates.erase(deviceId);
+	}
+	QueueDeviceListRefresh();
 	// DeviceWatcher callbacks can run outside the XAML apartment. Recreate the
 	// device on the UI apartment before starting the audio connection, matching
 	// the object flow used by the original DevicePicker implementation.
@@ -697,7 +715,7 @@ winrt::fire_and_forget ConnectDevice(std::wstring deviceId)
 	{
 		auto device = co_await DeviceInformation::CreateFromIdAsync(deviceId);
 		co_await uiContext;
-		if (g_shuttingDown)
+		if (g_shuttingDown || g_radioRecoveryInProgress)
 			co_return;
 		if (device)
 		{
@@ -707,7 +725,7 @@ winrt::fire_and_forget ConnectDevice(std::wstring deviceId)
 	}
 	catch (winrt::hresult_error const& ex)
 	{
-		if (g_shuttingDown)
+		if (g_shuttingDown || g_radioRecoveryInProgress)
 			co_return;
 
 		std::wstring errorMessage = ex.message().c_str();
@@ -719,6 +737,8 @@ winrt::fire_and_forget ConnectDevice(std::wstring deviceId)
 		{
 			std::lock_guard lock(g_connectionMutex);
 			g_deviceErrorMessages[deviceId] = std::move(errorMessage);
+			if (IsRadioRecoveryCandidate(static_cast<uint32_t>(ex.code())))
+				g_radioRecoveryCandidates.insert(deviceId);
 		}
 		QueueDeviceListRefresh();
 		LOG_CAUGHT_EXCEPTION();
@@ -726,7 +746,7 @@ winrt::fire_and_forget ConnectDevice(std::wstring deviceId)
 	}
 	catch (...)
 	{
-		if (g_shuttingDown)
+		if (g_shuttingDown || g_radioRecoveryInProgress)
 			co_return;
 	}
 
@@ -739,6 +759,8 @@ winrt::fire_and_forget ConnectDevice(std::wstring deviceId)
 
 winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 {
+	if (g_radioRecoveryInProgress)
+		co_return;
 	// The original project performed the complete StartAsync/OpenAsync sequence
 	// from the picker UI apartment. Preserve that behavior while the custom UI
 	// remains responsible only for displaying device rows.
@@ -748,6 +770,7 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 	{
 		std::lock_guard lock(g_connectionMutex);
 		g_deviceErrorMessages.erase(deviceId);
+		g_radioRecoveryCandidates.erase(deviceId);
 	}
 	QueueDeviceListRefresh();
 
@@ -786,6 +809,7 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 	}
 
 	bool success = false;
+	bool radioRecoveryCandidate = false;
 	std::wstring errorMessage;
 	AudioPlaybackConnection connection = nullptr;
 	uint64_t generation = 0;
@@ -830,7 +854,7 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			AppendLog(L"Connection OpenAsync: " + deviceId);
 			auto result = co_await connection.OpenAsync();
 			co_await uiContext;
-			if (g_shuttingDown)
+			if (g_shuttingDown || !IsCurrentConnection(deviceId, generation))
 				co_return;
 			AppendLog(L"Connection OpenAsync returned status " +
 				std::to_wstring(static_cast<int>(result.Status())) + L": " + deviceId);
@@ -873,6 +897,7 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 				success = false;
 				{
 					const auto extendedError = result.ExtendedError();
+					radioRecoveryCandidate = IsRadioRecoveryCandidate(static_cast<uint32_t>(extendedError));
 					LOG_HR(extendedError);
 					wchar_t errorCode[16]{};
 					swprintf_s(errorCode, L" (0x%08X)", static_cast<uint32_t>(extendedError));
@@ -886,6 +911,7 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 	catch (winrt::hresult_error const& ex)
 	{
 		success = false;
+		radioRecoveryCandidate = IsRadioRecoveryCandidate(static_cast<uint32_t>(ex.code()));
 		errorMessage.resize(64);
 		while (1)
 		{
@@ -908,6 +934,8 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 		errorMessage = _(L"Unknown error");
 		LOG_CAUGHT_EXCEPTION();
 	}
+	if (g_radioRecoveryInProgress)
+		co_return;
 	if (generation != 0 && !IsCurrentConnection(deviceId, generation))
 	{
 		// A user disconnect or device removal can complete an older OpenAsync
@@ -954,6 +982,8 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 		{
 			std::lock_guard lock(g_connectionMutex);
 			g_deviceErrorMessages[deviceId] = errorMessage.empty() ? _(L"Unknown error") : errorMessage;
+			if (radioRecoveryCandidate)
+				g_radioRecoveryCandidates.insert(deviceId);
 		}
 		AppendLog(L"Connection failed: " + deviceId + L"; " +
 			(errorMessage.empty() ? std::wstring(L"Unknown error") : errorMessage));
@@ -964,6 +994,8 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 
 winrt::fire_and_forget AutoConnectDevice(std::wstring deviceId)
 {
+	if (g_radioRecoveryInProgress)
+		co_return;
 	auto uiContext = winrt::apartment_context();
 	{
 		std::lock_guard lock(g_connectionMutex);
@@ -987,7 +1019,7 @@ winrt::fire_and_forget AutoConnectDevice(std::wstring deviceId)
 		// this tray application starts during sign-in. Avoid racing those services.
 		co_await winrt::resume_after(AUTO_CONNECT_STARTUP_DELAY);
 		co_await uiContext;
-		if (g_shuttingDown)
+		if (g_shuttingDown || g_radioRecoveryInProgress)
 			co_return;
 
 		// Keep the first opened connection. The audio worker waits for playback
@@ -1049,6 +1081,8 @@ winrt::fire_and_forget DisconnectDevice(std::wstring deviceId)
 
 winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 {
+	if (g_radioRecoveryInProgress)
+		co_return;
 	auto uiContext = winrt::apartment_context();
 	{
 		std::lock_guard lock(g_connectionMutex);
@@ -1074,7 +1108,7 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 
 	try
 	{
-		for (int attempt = 0; attempt < AUDIO_REPAIR_MAX_ATTEMPTS && !g_shuttingDown; ++attempt)
+		for (int attempt = 0; attempt < AUDIO_REPAIR_MAX_ATTEMPTS && !g_shuttingDown && !g_radioRecoveryInProgress; ++attempt)
 		{
 			co_await uiContext;
 			if (IsDeviceConnectionInProgress(deviceId))
@@ -1138,6 +1172,158 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 	}
 }
 
+winrt::Windows::Foundation::IAsyncOperation<bool> WaitForRadioState(
+	winrt::Windows::Devices::Radios::Radio radio,
+	winrt::Windows::Devices::Radios::RadioState expected,
+	std::chrono::seconds timeout)
+{
+	const auto deadline = std::chrono::steady_clock::now() + timeout;
+	while (!g_shuttingDown && std::chrono::steady_clock::now() < deadline)
+	{
+		if (radio.State() == expected)
+			co_return true;
+		co_await winrt::resume_after(AUDIO_REPAIR_POLL_INTERVAL);
+	}
+	co_return false;
+}
+
+winrt::fire_and_forget RecoverBluetoothRadio(std::wstring deviceId)
+{
+	using namespace winrt::Windows::Devices::Radios;
+	auto uiContext = winrt::apartment_context();
+	if (g_radioRecoveryInProgress.exchange(true))
+		co_return;
+	{
+		std::lock_guard lock(g_connectionMutex);
+		g_repairingDevices.insert(deviceId);
+	}
+	auto guard = wil::scope_exit([deviceId] {
+		g_radioRecoveryInProgress = false;
+		{
+			std::lock_guard lock(g_connectionMutex);
+			g_repairingDevices.erase(deviceId);
+		}
+		QueueDeviceListRefresh();
+		if (g_exitPendingAfterRadioRecovery.exchange(false) && IsWindow(g_hWnd))
+			PostMessageW(g_hWnd, WM_CLOSE, 0, 0);
+	});
+	QueueDeviceListRefresh();
+	AppendLog(L"User-confirmed Bluetooth radio recovery started: " + deviceId);
+
+	Radio radio = nullptr;
+	bool offRequested = false;
+	bool observedOff = false;
+	bool observedOn = false;
+	try
+	{
+		for (const auto& candidate : co_await Radio::GetRadiosAsync())
+		{
+			if (candidate.Kind() == RadioKind::Bluetooth)
+			{
+				radio = candidate;
+				break;
+			}
+		}
+		co_await uiContext;
+		if (!radio || radio.State() != RadioState::On)
+			throw winrt::hresult_error(E_FAIL, L"Bluetooth radio is unavailable or not on");
+
+		const auto access = co_await Radio::RequestAccessAsync();
+		co_await uiContext;
+		if (access != RadioAccessStatus::Allowed)
+		{
+			AppendLog(L"Bluetooth radio control denied: " + std::to_wstring(static_cast<int>(access)));
+			throw winrt::hresult_error(E_ACCESSDENIED, L"Windows denied Bluetooth radio control");
+		}
+		if (g_shuttingDown)
+			co_return;
+
+		// The radio reset affects every Bluetooth link. Release our own audio
+		// connections first; never close a connection while its worker is active.
+		std::vector<std::pair<std::wstring, uint64_t>> connections;
+		{
+			std::lock_guard lock(g_connectionMutex);
+			for (const auto& [id, entry] : g_audioPlaybackConnections)
+				connections.emplace_back(id, entry.Generation);
+		}
+		for (const auto& [id, generation] : connections)
+		{
+			co_await StopPhoneAudioAndWait(id);
+			co_await uiContext;
+			if (g_shuttingDown)
+				co_return;
+			CloseCurrentConnection(id, generation);
+		}
+
+		offRequested = true;
+		AppendLog(L"Requesting Bluetooth radio off");
+		if ((co_await radio.SetStateAsync(RadioState::Off)) != RadioAccessStatus::Allowed)
+			throw winrt::hresult_error(E_ACCESSDENIED, L"Windows rejected Bluetooth radio off");
+		observedOff = co_await WaitForRadioState(radio, RadioState::Off, std::chrono::seconds(10));
+		if (!observedOff)
+			throw winrt::hresult_error(E_FAIL, L"Bluetooth radio did not turn off");
+
+		AppendLog(L"Requesting Bluetooth radio on");
+		if ((co_await radio.SetStateAsync(RadioState::On)) != RadioAccessStatus::Allowed)
+			throw winrt::hresult_error(E_ACCESSDENIED, L"Windows rejected Bluetooth radio on");
+		observedOn = co_await WaitForRadioState(radio, RadioState::On, std::chrono::seconds(15));
+		if (!observedOn)
+			throw winrt::hresult_error(E_FAIL, L"Bluetooth radio did not turn on");
+	}
+	catch (...)
+	{
+		AppendLog(L"Bluetooth radio recovery failed: " + deviceId);
+		LOG_CAUGHT_EXCEPTION();
+	}
+
+	// If the radio was switched off but the normal on step failed, make one
+	// best-effort request to restore it before asking for manual intervention.
+	if (offRequested && !observedOn && radio)
+	{
+		try
+		{
+			AppendLog(L"Attempting to restore Bluetooth radio on");
+			if ((co_await radio.SetStateAsync(RadioState::On)) == RadioAccessStatus::Allowed)
+				observedOn = co_await WaitForRadioState(radio, RadioState::On, std::chrono::seconds(15));
+		}
+		catch (...)
+		{
+			LOG_CAUGHT_EXCEPTION();
+		}
+	}
+	co_await uiContext;
+	if (g_shuttingDown)
+		co_return;
+	if (!CanReconnectAfterRadioCycle(observedOff, observedOn))
+	{
+		{
+			std::lock_guard lock(g_connectionMutex);
+			g_deviceErrorMessages[deviceId] = _(L"Bluetooth recovery was not completed");
+		}
+		AppendLog(L"Bluetooth radio recovery incomplete; opening Windows settings: " + deviceId);
+		MessageBoxW(g_hWnd,
+			_(L"Windows could not restart Bluetooth. Open Bluetooth Settings to switch it off and on manually, then reconnect the phone."),
+			_(L"Bluetooth recovery was not completed"), MB_OK | MB_ICONWARNING | MB_TOPMOST);
+		winrt::Windows::System::Launcher::LaunchUriAsync(Uri(L"ms-settings:bluetooth"));
+		co_return;
+	}
+
+	AppendLog(L"Bluetooth radio cycled; reconnecting phone: " + deviceId);
+	co_await winrt::resume_after(std::chrono::seconds(2));
+	co_await uiContext;
+	if (g_shuttingDown)
+		co_return;
+	{
+		std::lock_guard lock(g_connectionMutex);
+		g_deviceErrorMessages.erase(deviceId);
+		g_radioRecoveryCandidates.erase(deviceId);
+		g_repairingDevices.erase(deviceId);
+	}
+	g_radioRecoveryInProgress = false;
+	QueueDeviceListRefresh();
+	ConnectDevice(deviceId);
+}
+
 void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& deviceName, bool lightTheme)
 {
 	using namespace winrt::Windows::UI::Xaml::Media;
@@ -1145,12 +1331,14 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 	bool connecting = false;
 	bool connected = false;
 	bool repairing = false;
+	bool canRecoverRadio = false;
 	std::wstring errorMessage;
 	{
 		std::lock_guard lock(g_connectionMutex);
 		auto connection = g_audioPlaybackConnections.find(deviceId);
 		connecting = connection != g_audioPlaybackConnections.end() && connection->second.Connecting;
 		repairing = g_repairingDevices.find(deviceId) != g_repairingDevices.end();
+		canRecoverRadio = g_radioRecoveryCandidates.find(deviceId) != g_radioRecoveryCandidates.end();
 		connecting = connecting || repairing;
 		// UI status is derived from the completed connection operation. Avoid
 		// querying the WinRT audio object merely to repaint the custom picker.
@@ -1171,7 +1359,7 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 	ColumnDefinition textColumn;
 	textColumn.Width(GridLength{ 1, GridUnitType::Star });
 	ColumnDefinition actionColumn;
-	actionColumn.Width(GridLength{ connected ? 190.0 : 110.0, GridUnitType::Pixel });
+	actionColumn.Width(GridLength{ connected ? 190.0 : canRecoverRadio ? 224.0 : 110.0, GridUnitType::Pixel });
 	row.ColumnDefinitions().Append(iconColumn);
 	row.ColumnDefinitions().Append(textColumn);
 	row.ColumnDefinitions().Append(actionColumn);
@@ -1199,7 +1387,7 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 	status.FontSize(13);
 	status.Foreground(CreateTextBrush(lightTheme, 175));
 	if (repairing)
-		status.Text(_(L"Repairing audio"));
+		status.Text(g_radioRecoveryInProgress ? _(L"Restarting Bluetooth") : _(L"Repairing audio"));
 	else if (connecting)
 		status.Text(_(L"Connecting"));
 	else if (connected)
@@ -1219,7 +1407,7 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 	action.Padding({ 12, 6, 12, 6 });
 	action.FontSize(13);
 	action.CornerRadius({ 6, 6, 6, 6 });
-	action.IsEnabled(!connecting);
+	action.IsEnabled(!connecting && !g_radioRecoveryInProgress);
 	action.Content(winrt::box_value(connected ? _(L"Disconnect") :
 		repairing ? _(L"Repairing audio") : connecting ? _(L"Connecting") : _(L"Connect")));
 	if (connected)
@@ -1259,6 +1447,35 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 		actions.VerticalAlignment(VerticalAlignment::Center);
 		actions.Spacing(6);
 		actions.Children().Append(repair);
+		actions.Children().Append(action);
+		Grid::SetColumn(actions, 2);
+		row.Children().Append(actions);
+	}
+	else if (canRecoverRadio)
+	{
+		Button recover;
+		recover.MinWidth(105);
+		recover.Padding({ 10, 6, 10, 6 });
+		recover.FontSize(13);
+		recover.CornerRadius({ 6, 6, 6, 6 });
+		recover.IsEnabled(!connecting && !g_radioRecoveryInProgress);
+		recover.Content(winrt::box_value(_(L"Restart Bluetooth")));
+		recover.Background(SolidColorBrush(MakeColor(255, 0, 103, 192)));
+		recover.Foreground(SolidColorBrush(MakeColor(255, 255, 255, 255)));
+		recover.Click([deviceId](const auto&, const auto&) {
+			const auto choice = MessageBoxW(g_hWnd,
+				_(L"Restarting the computer's Bluetooth will temporarily disconnect every Bluetooth device, including keyboards and mice. Restart it and reconnect this phone?"),
+				_(L"Restart Bluetooth"), MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING | MB_TOPMOST);
+			if (choice == IDYES)
+				RecoverBluetoothRadio(deviceId);
+		});
+
+		StackPanel actions;
+		actions.Orientation(Orientation::Horizontal);
+		actions.HorizontalAlignment(HorizontalAlignment::Right);
+		actions.VerticalAlignment(VerticalAlignment::Center);
+		actions.Spacing(6);
+		actions.Children().Append(recover);
 		actions.Children().Append(action);
 		Grid::SetColumn(actions, 2);
 		row.Children().Append(actions);

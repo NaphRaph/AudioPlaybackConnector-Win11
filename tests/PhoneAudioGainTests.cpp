@@ -1,9 +1,17 @@
 #include "../PhoneAudioGain.hpp"
+#include "../BluetoothRecoveryPolicy.hpp"
 #include <cassert>
 #include <cmath>
 
 int main()
 {
+	assert(IsRadioRecoveryCandidate(0x8007001Fu));
+	assert(!IsRadioRecoveryCandidate(0x800705B4u));
+	assert(!IsRadioRecoveryCandidate(0x00000000u));
+	assert(!CanReconnectAfterRadioCycle(false, true));
+	assert(!CanReconnectAfterRadioCycle(true, false));
+	assert(CanReconnectAfterRadioCycle(true, true));
+
 	// The midpoint preserves the captured phone signal; the upper half must not saturate at unity.
 	assert(PlaybackGain(0.0f) == 0.0f);
 	assert(PlaybackGain(0.25f) == 0.5f);

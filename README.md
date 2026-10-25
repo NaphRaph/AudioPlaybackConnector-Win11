@@ -103,6 +103,8 @@ The app uses C++/WinRT and the Windows `AudioPlaybackConnection` API. Bluetooth 
 
 Windows can accept an A2DP `OpenAsync()` request before the transport reaches the real `Opened` state, and the first open after boot can also produce a link that looks connected but carries no samples. This build no longer treats request acceptance as proof that audio is ready and gives startup auto-reconnect a controlled warm-up cycle. The user-triggered **Repair audio** action retains a bounded three-attempt recovery sequence and leaves the final connection open. If audio is still silent after that recovery, restart the PC's Bluetooth as described above.
 
+When a connection fails with `0x8007001F`, the device row offers **Restart Bluetooth**. The app attempts to cycle the PC's Bluetooth radio only after a separate confirmation; this temporarily disconnects every Bluetooth device. It reconnects the phone only after observing both the off and on transitions. If Windows denies radio control or the cycle fails, the app explains the failure and opens Bluetooth Settings for manual recovery. This is a recovery option, not a fix for a failing Bluetooth driver.
+
 ## License and acknowledgments
 
 Released under the [MIT License](LICENSE).
