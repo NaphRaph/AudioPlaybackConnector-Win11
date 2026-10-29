@@ -1,7 +1,6 @@
 #pragma once
 
 #include "resource.h"
-#include "PhoneAudioGain.hpp"
 #include "BluetoothRecoveryPolicy.hpp"
 
 using namespace winrt::Windows::Data::Json;
@@ -17,7 +16,6 @@ constexpr UINT WM_NOTIFYICON = WM_APP + 1;
 constexpr UINT WM_CONNECTDEVICE = WM_APP + 2;
 constexpr UINT WM_CONNECTION_STATE_CHANGED = WM_APP + 3;
 constexpr UINT WM_DEVICE_LIST_CHANGED = WM_APP + 4;
-constexpr UINT WM_PHONE_AUDIO_FAILED = WM_APP + 5;
 constexpr UINT_PTR SHUTDOWN_TIMER_ID = 1;
 constexpr UINT SHUTDOWN_RELEASE_DELAY_MS = 2000;
 constexpr auto CONNECTION_RELEASE_COOLDOWN = std::chrono::milliseconds(1500);
@@ -29,24 +27,14 @@ constexpr int AUDIO_REPAIR_MAX_ATTEMPTS = 3;
 // an OpenAsync that is still running.
 constexpr auto AUDIO_REPAIR_CONNECTION_TIMEOUT = std::chrono::seconds(25);
 constexpr auto AUDIO_REPAIR_POLL_INTERVAL = std::chrono::milliseconds(250);
-constexpr double DEFAULT_PLAYBACK_VOLUME = 0.5;
-constexpr int VOLUME_CONTROL_VERSION = 5;
+constexpr double DEFAULT_PLAYBACK_VOLUME = 1.0;
+constexpr int VOLUME_CONTROL_VERSION = 6;
 
 struct ConnectionStateChangedMessage
 {
 	std::wstring deviceId;
 	uint64_t generation{};
 };
-
-struct PhoneAudioFailureMessage
-{
-	std::wstring deviceId;
-	uint64_t generation{};
-	std::wstring reason;
-};
-
-class PhoneAudioProcessor;
-void QueuePhoneAudioFailure(std::wstring deviceId, uint64_t generation, std::wstring reason);
 
 struct AudioPlaybackConnectionEntry
 {
@@ -69,7 +57,6 @@ inline MenuFlyout g_xamlMenu = nullptr;
 inline FocusState g_menuFocusState = FocusState::Unfocused;
 inline DeviceWatcher g_deviceWatcher = nullptr;
 inline std::unordered_map<std::wstring, AudioPlaybackConnectionEntry> g_audioPlaybackConnections;
-inline std::unordered_map<std::wstring, std::shared_ptr<PhoneAudioProcessor>> g_phoneAudioProcessors;
 inline std::unordered_map<std::wstring, std::wstring> g_deviceErrorMessages;
 inline std::unordered_set<std::wstring> g_radioRecoveryCandidates;
 inline std::unordered_set<std::wstring> g_autoRadioRecoveryAttempted;
@@ -129,19 +116,18 @@ void RefreshDevicePicker();
 
 // Connection.cpp
 void HandleConnectionStateChanged(ConnectionStateChangedMessage* message);
-void HandlePhoneAudioFailure(PhoneAudioFailureMessage* message);
 winrt::fire_and_forget ConnectDevice(std::wstring deviceId);
 winrt::fire_and_forget ConnectDevice(DeviceInformation device);
 winrt::fire_and_forget AutoConnectDevice(std::wstring deviceId);
 winrt::fire_and_forget DisconnectDevice(std::wstring deviceId);
 winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId);
 winrt::fire_and_forget RecoverBluetoothRadio(std::wstring deviceId);
-void StopAllPhoneAudioBlocking();
+void StartPhoneVolumeApplier();
+void StopPhoneVolumeApplier();
 
 #include "Util.hpp"
 #include "Logging.hpp"
 #include "I18n.hpp"
 #include "SettingsUtil.hpp"
 #include "AudioSessionVolume.hpp"
-#include "PhoneAudioProcessor.hpp"
 #include "Direct2DSvg.hpp"

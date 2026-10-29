@@ -87,6 +87,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	g_nid.hWnd = g_niid.hWnd = g_hWnd;
 	wcscpy_s(g_nid.szTip, _(L"AudioPlaybackConnector"));
 	UpdateNotifyIcon();
+	StartPhoneVolumeApplier();
 
 	WM_TASKBAR_CREATED = RegisterWindowMessageW(L"TaskbarCreated");
 	LOG_LAST_ERROR_IF(WM_TASKBAR_CREATED == 0);
@@ -142,7 +143,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (g_reconnect)
 			SaveSettings();
 
-		StopAllPhoneAudioBlocking();
+		StopPhoneVolumeApplier();
 		bool releasedConnections = false;
 		{
 			std::lock_guard lock(g_connectionMutex);
@@ -178,7 +179,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_DESTROY:
 		g_shuttingDown = true;
 		AppendLog(L"Application stopped");
-		StopAllPhoneAudioBlocking();
+		StopPhoneVolumeApplier();
 		{
 			std::lock_guard lock(g_connectionMutex);
 			for (const auto& connection : g_audioPlaybackConnections)
@@ -258,9 +259,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 	case WM_CONNECTION_STATE_CHANGED:
 		HandleConnectionStateChanged(reinterpret_cast<ConnectionStateChangedMessage*>(lParam));
-		break;
-	case WM_PHONE_AUDIO_FAILED:
-		HandlePhoneAudioFailure(reinterpret_cast<PhoneAudioFailureMessage*>(lParam));
 		break;
 	case WM_DEVICE_LIST_CHANGED:
 		RefreshDevicePicker();

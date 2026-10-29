@@ -67,12 +67,18 @@ inline void LoadSettings()
 		std::wstring utf16 = Utf8ToUtf16(string);
 		auto jsonObj = JsonObject::Parse(utf16);
 		g_reconnect = jsonObj.Lookup(L"reconnect").GetBoolean();
-		// Versions 1-3 controlled the wrong audio path. Version 4 already used
-		// this slider, so preserve its position when upgrading to digital gain.
+		// Version 6 controls the Windows playback session volume directly, so
+		// 100% is the phone's normal level. Versions 4-5 used 50% as the neutral
+		// point of a digital gain path; shift them so the loudness is preserved.
 		const auto volumeControlVersion = jsonObj.HasKey(L"volumeControlVersion") ?
 			static_cast<int>(jsonObj.Lookup(L"volumeControlVersion").GetNumber()) : 1;
 		if (volumeControlVersion >= 4 && jsonObj.HasKey(L"playbackVolume"))
-			g_playbackVolume = std::clamp(jsonObj.Lookup(L"playbackVolume").GetNumber(), 0.0, 1.0);
+		{
+			double volume = std::clamp(jsonObj.Lookup(L"playbackVolume").GetNumber(), 0.0, 1.0);
+			if (volumeControlVersion < 6)
+				volume = (std::min)(1.0, volume * 2.0);
+			g_playbackVolume = volume;
+		}
 
 		auto lastDevices = jsonObj.Lookup(L"lastDevices").GetArray();
 		g_lastDevices.reserve(lastDevices.Size());

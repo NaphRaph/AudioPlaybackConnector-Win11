@@ -73,67 +73,50 @@ void QueueConnectionStateChanged(std::wstring deviceId, uint64_t generation)
 		message.release();
 }
 
-void QueuePhoneAudioFailure(std::wstring deviceId, uint64_t generation, std::wstring reason)
+namespace
 {
-	if (g_shuttingDown || !IsWindow(g_hWnd))
+	std::thread g_volumeApplierThread;
+	std::atomic_bool g_volumeApplierStop = false;
+}
+
+// The slider controls the Windows playback session that carries each phone's
+// audio. Windows keeps that session volume across connections and recreates the
+// session when the phone switches outputs, so a light poll keeps it in sync.
+void RunPhoneVolumeApplier()
+{
+	while (!g_volumeApplierStop && !g_shuttingDown)
+	{
+		std::vector<std::wstring> devices;
+		{
+			std::lock_guard lock(g_connectionMutex);
+			for (const auto& [deviceId, entry] : g_audioPlaybackConnections)
+			{
+				if (!entry.Connecting)
+					devices.push_back(deviceId);
+			}
+		}
+
+		const auto volume = static_cast<float>(g_playbackVolume.load());
+		for (const auto& deviceId : devices)
+			SetPhoneAudioSessionVolume(deviceId, volume);
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(500));
+	}
+}
+
+void StartPhoneVolumeApplier()
+{
+	if (g_volumeApplierThread.joinable())
 		return;
-	auto message = std::make_unique<PhoneAudioFailureMessage>();
-	message->deviceId = std::move(deviceId);
-	message->generation = generation;
-	message->reason = std::move(reason);
-	if (PostMessageW(g_hWnd, WM_PHONE_AUDIO_FAILED, 0, reinterpret_cast<LPARAM>(message.get())))
-		message.release();
+	g_volumeApplierStop = false;
+	g_volumeApplierThread = std::thread(RunPhoneVolumeApplier);
 }
 
-void StopPhoneAudio(std::wstring_view deviceId)
+void StopPhoneVolumeApplier()
 {
-	std::lock_guard lock(g_connectionMutex);
-	auto processor = g_phoneAudioProcessors.find(std::wstring(deviceId));
-	if (processor != g_phoneAudioProcessors.end())
-	{
-		processor->second->Stop();
-		g_phoneAudioProcessors.erase(processor);
-	}
-}
-
-winrt::Windows::Foundation::IAsyncAction StopPhoneAudioAndWait(std::wstring deviceId)
-{
-	std::shared_ptr<PhoneAudioProcessor> processor;
-	{
-		std::lock_guard lock(g_connectionMutex);
-		auto it = g_phoneAudioProcessors.find(deviceId);
-		if (it != g_phoneAudioProcessors.end())
-		{
-			processor = it->second;
-			processor->Stop();
-		}
-	}
-	if (!processor)
-		co_return;
-	co_await winrt::resume_background();
-	if (!processor->WaitStopped())
-		AppendLog(L"Phone audio worker stop timed out: " + deviceId);
-}
-
-// Workers restore the Windows session volume they changed, so shutdown must let
-// them finish before the connection (and with it the session) goes away.
-void StopAllPhoneAudioBlocking()
-{
-	std::vector<std::shared_ptr<PhoneAudioProcessor>> processors;
-	{
-		std::lock_guard lock(g_connectionMutex);
-		for (auto& [_, processor] : g_phoneAudioProcessors)
-		{
-			processor->Stop();
-			processors.push_back(processor);
-		}
-		g_phoneAudioProcessors.clear();
-	}
-	for (const auto& processor : processors)
-	{
-		if (!processor->WaitStopped())
-			AppendLog(L"Phone audio worker stop timed out during shutdown");
-	}
+	g_volumeApplierStop = true;
+	if (g_volumeApplierThread.joinable())
+		g_volumeApplierThread.join();
 }
 
 void CloseCurrentConnection(std::wstring_view deviceId, uint64_t generation)
@@ -143,7 +126,6 @@ void CloseCurrentConnection(std::wstring_view deviceId, uint64_t generation)
 	if (it == g_audioPlaybackConnections.end() || it->second.Generation != generation)
 		return;
 
-	StopPhoneAudio(deviceId);
 	it->second.Connection.Close();
 	g_audioPlaybackConnections.erase(it);
 	g_lastConnectionCloseTimes.insert_or_assign(std::wstring(deviceId), std::chrono::steady_clock::now());
@@ -160,26 +142,9 @@ void HandleConnectionStateChanged(ConnectionStateChangedMessage* raw)
 	auto it = g_audioPlaybackConnections.find(stateChanged->deviceId);
 	if (it == g_audioPlaybackConnections.end() || it->second.Generation != stateChanged->generation)
 		return;
-	StopPhoneAudio(stateChanged->deviceId);
 	g_audioPlaybackConnections.erase(it);
 	g_lastConnectionCloseTimes.insert_or_assign(stateChanged->deviceId, std::chrono::steady_clock::now());
 	AppendLog(L"Bluetooth audio connection closed: " + stateChanged->deviceId);
-	QueueDeviceListRefresh();
-}
-
-// Takes ownership of the message allocated by QueuePhoneAudioFailure().
-void HandlePhoneAudioFailure(PhoneAudioFailureMessage* raw)
-{
-	std::unique_ptr<PhoneAudioFailureMessage> failure(raw);
-	if (!failure || g_shuttingDown || !IsCurrentConnection(failure->deviceId, failure->generation))
-		return;
-
-	CloseCurrentConnection(failure->deviceId, failure->generation);
-	{
-		std::lock_guard lock(g_connectionMutex);
-		g_deviceErrorMessages[failure->deviceId] = failure->reason;
-		g_radioRecoveryCandidates.erase(failure->deviceId);
-	}
 	QueueDeviceListRefresh();
 }
 
@@ -452,21 +417,6 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			co_return;
 		}
 
-		// Bluetooth is connected even if the phone is currently paused. The
-		// audio worker waits for the capture endpoint to become active.
-		try
-		{
-			auto processor = std::make_shared<PhoneAudioProcessor>(deviceId, generation);
-			processor->Start();
-			std::lock_guard lock(g_connectionMutex);
-			g_phoneAudioProcessors.insert_or_assign(deviceId, std::move(processor));
-		}
-		catch (...)
-		{
-			errorMessage = L"Could not start phone-only audio processor";
-			success = false;
-			LOG_CAUGHT_EXCEPTION();
-		}
 	}
 
 	if (success && IsCurrentConnection(deviceId, generation))
@@ -588,7 +538,6 @@ winrt::fire_and_forget DisconnectDevice(std::wstring deviceId)
 		g_deviceOperations.erase(deviceId);
 		QueueDeviceListRefresh();
 	});
-	co_await StopPhoneAudioAndWait(deviceId);
 	co_await uiContext;
 	if (g_shuttingDown)
 		co_return;
@@ -637,7 +586,6 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 				AppendLog(L"Audio repair deferred while connection is still opening: " + deviceId);
 				co_return;
 			}
-			co_await StopPhoneAudioAndWait(deviceId);
 			co_await uiContext;
 			if (g_shuttingDown)
 				co_return;
@@ -646,7 +594,6 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 				auto it = g_audioPlaybackConnections.find(deviceId);
 				if (it != g_audioPlaybackConnections.end())
 				{
-					StopPhoneAudio(deviceId);
 					it->second.Connection.Close();
 					g_audioPlaybackConnections.erase(it);
 					g_lastConnectionCloseTimes.insert_or_assign(deviceId, std::chrono::steady_clock::now());
@@ -769,7 +716,6 @@ winrt::fire_and_forget RecoverBluetoothRadio(std::wstring deviceId)
 		}
 		for (const auto& [id, generation] : connections)
 		{
-			co_await StopPhoneAudioAndWait(id);
 			co_await uiContext;
 			if (g_shuttingDown)
 				co_return;

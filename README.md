@@ -17,7 +17,7 @@ Turn a Windows 10/11 PC into a Bluetooth speaker. This app enables the built-in 
 - Connect and disconnect paired phones from the notification area
 - Optional automatic reconnection on the next launch
 - Single-instance operation with support for multiple connected source devices
-- Phone A2DP input volume independent from the PC's other audio, with 50% as the neutral level and up to 2× gain above it
+- Phone A2DP input volume independent from the PC's other audio, controlling the phone's Windows playback session
 - Improved A2DP connection lifecycle for Windows 11
 - Portable single-file executable with no installer
 - Official x86, x64 and ARM64 builds
@@ -51,7 +51,7 @@ SHA-256 checksums are included in `SHA256SUMS.txt` on the Release page.
 
 Right-click the notification-area icon to open Bluetooth settings or exit the app. When exiting, **Reconnect on next start** can remember active devices and reconnect them on the next launch.
 
-The volume slider controls only the audio coming from the connected phone. 50% plays at the phone's normal level, 0–50% attenuates it, and 50–100% applies up to about 2× digital gain through a soft limiter. It does not change the PC's speaker/headphone master volume or other applications. Because the gain is applied to the app's own copy of the phone stream, the app silences the Windows-owned phone session only while it is actually playing that copy, and restores the session's previous level when the phone disconnects or the app exits. Each connected phone is processed independently.
+The volume slider controls only the audio coming from the connected phone: it sets the Windows playback session that carries that phone's audio, so 100% is the phone's normal level and 0–100% attenuates it. It does not change the PC's speaker/headphone master volume or other applications. Windows recreates that session when the phone changes outputs, so the app re-applies the slider whenever the session appears or is rebuilt. Each connected phone is controlled independently.
 
 Settings and diagnostic logs are stored under `%LOCALAPPDATA%\AudioPlaybackConnector`, not beside the executable. An existing `AudioPlaybackConnector.json` beside the executable is migrated automatically.
 
@@ -61,7 +61,7 @@ English, Simplified Chinese and Traditional Chinese are selected automatically f
 
 ### Connected, but there is no audio
 
-The app follows the documented Windows `StartAsync()` / `OpenAsync()` sequence and waits for the connection to reach the actual `Opened` audio state. The first connection after the app starts is primed by closing and reopening it once, because Windows can report a cold A2DP link as opened while it carries no samples. The app then silences the Windows-owned playback path only after it has captured real audio to play, so a failed takeover leaves the normal path audible instead of a connected-but-silent phone. **Repair audio** remains available as a manual fallback and performs up to three progressively delayed reconnects.
+The app follows the documented Windows `StartAsync()` / `OpenAsync()` sequence and waits for the connection to reach the actual `Opened` audio state. The first connection after the app starts is primed by closing and reopening it once, because Windows can report a cold A2DP link as opened while it carries no samples. **Repair audio** remains available as a manual fallback and performs up to three progressively delayed reconnects.
 
 ### Connection error, or still no audio after reconnecting
 
