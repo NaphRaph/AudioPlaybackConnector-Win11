@@ -21,6 +21,7 @@
 #include <audioclient.h>
 #include <audiopolicy.h>
 #include <endpointvolume.h>
+#include <avrt.h>
 #include <cfgmgr32.h>
 #include <d2d1_3.h>
 #include <shlwapi.h>
@@ -74,5 +75,6 @@
 #pragma comment(lib, "Ole32.lib")
 #pragma comment(lib, "Uuid.lib")
 #pragma comment(lib, "Cfgmgr32.lib")
+#pragma comment(lib, "avrt.lib")
 
 #endif //PCH_H

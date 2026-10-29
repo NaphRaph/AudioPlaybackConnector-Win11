@@ -57,6 +57,7 @@ private:
 	void Run()
 	{
 		const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+		HANDLE mmcss = nullptr;
 		bool muted = false;
 		float originalVolume = 1.0f;
 		std::wstring failureReason;
@@ -64,6 +65,12 @@ private:
 		try
 		{
 			Check(apartment);
+			// Ask MMCSS for audio scheduling so this worker still gets CPU time
+			// while games or shader compilers saturate every core.
+			DWORD mmcssTask = 0;
+			mmcss = AvSetMmThreadCharacteristicsW(L"Audio", &mmcssTask);
+			if (mmcss)
+				AvSetMmThreadPriority(mmcss, AVRT_PRIORITY_HIGH);
 			winrt::com_ptr<IMMDeviceEnumerator> enumerator;
 			stage = L"Create device enumerator";
 			Check(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
@@ -149,13 +156,24 @@ private:
 			Check(output->Activate(__uuidof(IAudioClient), CLSCTX_ALL,
 				nullptr, renderClient.put_void()));
 
+			stage = L"Create audio events";
+			wil::unique_handle captureEvent(CreateEventW(nullptr, FALSE, FALSE, nullptr));
+			wil::unique_handle renderEvent(CreateEventW(nullptr, FALSE, FALSE, nullptr));
+			if (!captureEvent.get() || !renderEvent.get())
+				throw winrt::hresult_error(HRESULT_FROM_WIN32(GetLastError()));
+
 			stage = L"Initialize phone capture";
-			Check(captureClient->Initialize(AUDCLNT_SHAREMODE_SHARED, 0,
+			Check(captureClient->Initialize(AUDCLNT_SHAREMODE_SHARED,
+				AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
 				2'000'000, 0, format.get(), nullptr));
 			stage = L"Initialize phone playback";
 			Check(renderClient->Initialize(AUDCLNT_SHAREMODE_SHARED,
-				AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+				AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
+					AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
 				3'000'000, 0, format.get(), nullptr));
+			stage = L"Bind audio events";
+			Check(captureClient->SetEventHandle(captureEvent.get()));
+			Check(renderClient->SetEventHandle(renderEvent.get()));
 
 			winrt::com_ptr<IAudioCaptureClient> capture;
 			winrt::com_ptr<IAudioRenderClient> render;
@@ -181,6 +199,7 @@ private:
 
 			auto nextSessionCheck = std::chrono::steady_clock::now();
 			auto nextOutputCheck = nextSessionCheck;
+			HANDLE audioEvents[2] = { captureEvent.get(), renderEvent.get() };
 			while (!m_stop && !g_shuttingDown)
 			{
 				const auto now = std::chrono::steady_clock::now();
@@ -198,6 +217,18 @@ private:
 						throw winrt::hresult_error(AUDCLNT_E_DEVICE_INVALIDATED);
 					nextOutputCheck = now + std::chrono::milliseconds(250);
 				}
+				if (muted && now >= nextSessionCheck)
+				{
+					nextSessionCheck = now + std::chrono::milliseconds(500);
+					// Switching the phone to headphones and back can leave Windows
+					// with a fresh playback session at full volume while this worker
+					// keeps rendering. Silence it again so the two paths cannot play
+					// on top of each other.
+					SetPhoneAudioSessionVolume(m_deviceId, 0.0f);
+				}
+				// Block until the engine has work for us instead of sleeping a fixed
+				// interval; on a saturated system this cuts the wake-up latency.
+				WaitForMultipleObjects(2, audioEvents, FALSE, 10);
 				stage = L"Capture phone audio";
 				UINT32 packetFrames = 0;
 				Check(capture->GetNextPacketSize(&packetFrames));
@@ -224,7 +255,16 @@ private:
 							originalVolume = session.Level <= 0.001f ? 1.0f : session.Level;
 							muted = SetPhoneAudioSessionVolume(m_deviceId, 0.0f);
 							if (muted)
-								AppendLog(L"Phone-only audio takeover started: " + m_deviceId);
+							{
+								const auto slider = static_cast<float>(g_playbackVolume.load());
+								AppendLog(L"Phone-only audio takeover started: " + m_deviceId +
+									L"; baseline " + std::to_wstring(
+										static_cast<int>(std::lround(originalVolume * 100.0f))) +
+									L"%, slider " + std::to_wstring(
+										static_cast<int>(std::lround(slider * 100.0f))) +
+									L"%, gain " + std::to_wstring(
+										static_cast<int>(std::lround(PlaybackGain(slider) * 100.0f))) + L"%");
+							}
 						}
 					}
 
@@ -257,7 +297,6 @@ private:
 					Check(processing);
 					Check(capture->GetNextPacketSize(&packetFrames));
 				}
-				std::this_thread::sleep_for(std::chrono::milliseconds(10));
 			}
 			captureClient->Stop();
 			renderClient->Stop();
@@ -285,9 +324,18 @@ private:
 			// Windows keeps this session volume across connections. Restore the
 			// value captured before the takeover so the next normal playback is
 			// neither muted nor louder than the user left it.
+			PhoneAudioSession current;
+			if (FindPhoneAudioSession(m_deviceId, current))
+			{
+				AppendLog(L"Restoring phone session volume: current " + std::to_wstring(
+					static_cast<int>(std::lround(current.Level * 100.0f))) + L"% -> " + std::to_wstring(
+						static_cast<int>(std::lround(originalVolume * 100.0f))) + L"%: " + m_deviceId);
+			}
 			if (SetPhoneAudioSessionVolume(m_deviceId, originalVolume))
 				AppendLog(L"Phone audio session volume restored: " + m_deviceId);
 		}
+		if (mmcss)
+			AvRevertMmThreadCharacteristics(mmcss);
 		if (SUCCEEDED(apartment))
 			CoUninitialize();
 		m_stopped.set_value();
