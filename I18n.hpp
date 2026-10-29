@@ -1,7 +1,7 @@
 #pragma once
 #include "FnvHash.hpp"
 
-std::unordered_map<uint32_t, const wchar_t*> hashToStrMap;
+inline std::unordered_map<uint32_t, const wchar_t*> hashToStrMap;
 
 #pragma pack(push, 1)
 struct YMOData
@@ -15,7 +15,7 @@ struct YMOData
 };
 #pragma pack(pop)
 
-void LoadTranslateData()
+inline void LoadTranslateData()
 {
 	hashToStrMap.clear();
 	auto hRes = FindResourceExW(g_hInst, L"YMO", MAKEINTRESOURCEW(1), GetThreadUILanguage());
@@ -41,7 +41,7 @@ void LoadTranslateData()
 	}
 }
 
-const wchar_t* Translate(const wchar_t* str)
+inline const wchar_t* Translate(const wchar_t* str)
 {
 	static std::unordered_map<const wchar_t*, const wchar_t*> ptrToStrMap;
 
@@ -63,7 +63,7 @@ const wchar_t* Translate(const wchar_t* str)
 	return translation;
 }
 
-const wchar_t* TranslateContext(const wchar_t* str, const wchar_t* ctxtStr)
+inline const wchar_t* TranslateContext(const wchar_t* str, const wchar_t* ctxtStr)
 {
 	auto translation = Translate(ctxtStr);
 	if (translation == ctxtStr)

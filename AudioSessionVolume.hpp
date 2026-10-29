@@ -3,7 +3,7 @@
 // The Bluetooth sink is rendered by an AudioSrv-owned session on a render
 // endpoint. Its session identifier contains the associated A2DP capture
 // endpoint GUID; the capture endpoint's own volume is not in the playback path.
-std::wstring BluetoothParentId(std::wstring_view deviceId)
+inline std::wstring BluetoothParentId(std::wstring_view deviceId)
 {
 	const auto begin = deviceId.find(L"BTHENUM#");
 	const auto end = deviceId.rfind(L"#{");
@@ -14,14 +14,14 @@ std::wstring BluetoothParentId(std::wstring_view deviceId)
 	return parent;
 }
 
-bool EqualsIgnoreCase(std::wstring_view left, std::wstring_view right)
+inline bool EqualsIgnoreCase(std::wstring_view left, std::wstring_view right)
 {
 	return left.size() == right.size() &&
 		CompareStringOrdinal(left.data(), static_cast<int>(left.size()),
 			right.data(), static_cast<int>(right.size()), TRUE) == CSTR_EQUAL;
 }
 
-bool ContainsIgnoreCase(std::wstring_view text, std::wstring_view part)
+inline bool ContainsIgnoreCase(std::wstring_view text, std::wstring_view part)
 {
 	if (part.empty() || part.size() > text.size())
 		return false;
@@ -33,7 +33,7 @@ bool ContainsIgnoreCase(std::wstring_view text, std::wstring_view part)
 	return false;
 }
 
-bool GetPnPParentId(DEVINST child, std::wstring& parentId)
+inline bool GetPnPParentId(DEVINST child, std::wstring& parentId)
 {
 	DEVINST parent = 0;
 	if (CM_Get_Parent(&parent, child, 0) != CR_SUCCESS)
@@ -49,7 +49,7 @@ bool GetPnPParentId(DEVINST child, std::wstring& parentId)
 	return true;
 }
 
-bool FindPhoneEndpointGuid(std::wstring_view deviceId, std::wstring& endpointGuid)
+inline bool FindPhoneEndpointGuid(std::wstring_view deviceId, std::wstring& endpointGuid)
 {
 	const auto expectedParent = BluetoothParentId(deviceId);
 	if (expectedParent.empty())
@@ -85,7 +85,7 @@ bool FindPhoneEndpointGuid(std::wstring_view deviceId, std::wstring& endpointGui
 	return false;
 }
 
-std::wstring FindCachedPhoneEndpointGuid(std::wstring_view deviceId)
+inline std::wstring FindCachedPhoneEndpointGuid(std::wstring_view deviceId)
 {
 	{
 		std::lock_guard lock(g_volumeMutex);
@@ -112,7 +112,7 @@ struct PhoneAudioSession
 // The session is created by AudioSrv for the A2DP sink's render path. Windows
 // keeps its volume across connections, so callers must restore any value they
 // change even when the phone later pauses or disconnects.
-bool FindPhoneAudioSession(std::wstring_view deviceId, PhoneAudioSession& session)
+inline bool FindPhoneAudioSession(std::wstring_view deviceId, PhoneAudioSession& session)
 {
 	const auto endpointGuid = FindCachedPhoneEndpointGuid(deviceId);
 	if (endpointGuid.empty())
@@ -177,7 +177,7 @@ bool FindPhoneAudioSession(std::wstring_view deviceId, PhoneAudioSession& sessio
 	return false;
 }
 
-bool SetPhoneAudioSessionVolume(std::wstring_view deviceId, float level)
+inline bool SetPhoneAudioSessionVolume(std::wstring_view deviceId, float level)
 {
 	PhoneAudioSession session;
 	if (!FindPhoneAudioSession(deviceId, session))

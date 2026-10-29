@@ -55,53 +55,79 @@ struct AudioPlaybackConnectionEntry
 	bool Connecting{};
 };
 
-HINSTANCE g_hInst;
-HWND g_hWnd;
-HWND g_hWndXaml;
-wil::unique_handle g_singleInstanceMutex;
-Canvas g_xamlCanvas = nullptr;
-Flyout g_xamlFlyout = nullptr;
-Flyout g_xamlDeviceFlyout = nullptr;
-StackPanel g_deviceListPanel = nullptr;
-MenuFlyout g_xamlMenu = nullptr;
-FocusState g_menuFocusState = FocusState::Unfocused;
-DeviceWatcher g_deviceWatcher = nullptr;
-std::unordered_map<std::wstring, AudioPlaybackConnectionEntry> g_audioPlaybackConnections;
-std::unordered_map<std::wstring, std::shared_ptr<PhoneAudioProcessor>> g_phoneAudioProcessors;
-std::unordered_map<std::wstring, std::wstring> g_deviceErrorMessages;
-std::unordered_set<std::wstring> g_radioRecoveryCandidates;
-std::unordered_set<std::wstring> g_autoRadioRecoveryAttempted;
-std::unordered_map<std::wstring, std::wstring> g_availableDeviceNames;
-std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> g_lastConnectionCloseTimes;
-std::unordered_set<std::wstring> g_repairingDevices;
-std::unordered_set<std::wstring> g_disconnectingDevices;
-std::recursive_mutex g_connectionMutex;
-std::mutex g_deviceListMutex;
-std::mutex g_logMutex;
-std::mutex g_volumeMutex;
-HICON g_hIconLight = nullptr;
-HICON g_hIconDark = nullptr;
-NOTIFYICONDATAW g_nid = {
+// Shared state. The application is a single process with a single UI thread;
+// these objects are guarded by the mutexes below where noted.
+inline HINSTANCE g_hInst;
+inline HWND g_hWnd;
+inline HWND g_hWndXaml;
+inline wil::unique_handle g_singleInstanceMutex;
+inline Canvas g_xamlCanvas = nullptr;
+inline Flyout g_xamlFlyout = nullptr;
+inline Flyout g_xamlDeviceFlyout = nullptr;
+inline StackPanel g_deviceListPanel = nullptr;
+inline MenuFlyout g_xamlMenu = nullptr;
+inline FocusState g_menuFocusState = FocusState::Unfocused;
+inline DeviceWatcher g_deviceWatcher = nullptr;
+inline std::unordered_map<std::wstring, AudioPlaybackConnectionEntry> g_audioPlaybackConnections;
+inline std::unordered_map<std::wstring, std::shared_ptr<PhoneAudioProcessor>> g_phoneAudioProcessors;
+inline std::unordered_map<std::wstring, std::wstring> g_deviceErrorMessages;
+inline std::unordered_set<std::wstring> g_radioRecoveryCandidates;
+inline std::unordered_set<std::wstring> g_autoRadioRecoveryAttempted;
+inline std::unordered_map<std::wstring, std::wstring> g_availableDeviceNames;
+inline std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> g_lastConnectionCloseTimes;
+inline std::unordered_set<std::wstring> g_repairingDevices;
+inline std::unordered_set<std::wstring> g_disconnectingDevices;
+inline std::recursive_mutex g_connectionMutex;
+inline std::mutex g_deviceListMutex;
+inline std::mutex g_logMutex;
+inline std::mutex g_volumeMutex;
+inline HICON g_hIconLight = nullptr;
+inline HICON g_hIconDark = nullptr;
+inline NOTIFYICONDATAW g_nid = {
 	.cbSize = sizeof(g_nid),
 	.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP,
 	.uCallbackMessage = WM_NOTIFYICON,
 	.uVersion = NOTIFYICON_VERSION_4
 };
-NOTIFYICONIDENTIFIER g_niid = {
+inline NOTIFYICONIDENTIFIER g_niid = {
 	.cbSize = sizeof(g_niid)
 };
-UINT WM_TASKBAR_CREATED = 0;
-bool g_reconnect = false;
-std::atomic<double> g_playbackVolume = DEFAULT_PLAYBACK_VOLUME;
-std::unordered_map<std::wstring, std::wstring> g_phoneEndpointGuids;
-std::vector<std::wstring> g_lastDevices;
-uint64_t g_nextConnectionGeneration = 0;
-std::atomic_uint64_t g_deviceWatcherGeneration = 0;
-std::atomic_bool g_deviceEnumerationCompleted = false;
-std::atomic_bool g_devicePickerVisible = false;
-std::atomic_bool g_shuttingDown = false;
-std::atomic_bool g_radioRecoveryInProgress = false;
-std::atomic_bool g_exitPendingAfterRadioRecovery = false;
+inline UINT WM_TASKBAR_CREATED = 0;
+inline bool g_reconnect = false;
+inline std::atomic<double> g_playbackVolume = DEFAULT_PLAYBACK_VOLUME;
+inline std::unordered_map<std::wstring, std::wstring> g_phoneEndpointGuids;
+inline std::vector<std::wstring> g_lastDevices;
+inline uint64_t g_nextConnectionGeneration = 0;
+inline std::atomic_uint64_t g_deviceWatcherGeneration = 0;
+inline std::atomic_bool g_deviceEnumerationCompleted = false;
+inline std::atomic_bool g_devicePickerVisible = false;
+inline std::atomic_bool g_shuttingDown = false;
+inline std::atomic_bool g_radioRecoveryInProgress = false;
+inline std::atomic_bool g_exitPendingAfterRadioRecovery = false;
+
+// App.cpp
+LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+void QueueDeviceListRefresh();
+void SetupSvgIcon();
+void UpdateNotifyIcon();
+
+// Ui.cpp
+void ApplyUiLanguage(winrt::Windows::UI::Xaml::FrameworkElement const& element);
+void SetupFlyout();
+void SetupMenu();
+void SetupDevicePicker();
+void RefreshDevicePicker();
+
+// Connection.cpp
+void HandleConnectionStateChanged(ConnectionStateChangedMessage* message);
+void HandlePhoneAudioFailure(PhoneAudioFailureMessage* message);
+winrt::fire_and_forget ConnectDevice(std::wstring deviceId);
+winrt::fire_and_forget ConnectDevice(DeviceInformation device);
+winrt::fire_and_forget AutoConnectDevice(std::wstring deviceId);
+winrt::fire_and_forget DisconnectDevice(std::wstring deviceId);
+winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId);
+winrt::fire_and_forget RecoverBluetoothRadio(std::wstring deviceId);
+void StopAllPhoneAudioBlocking();
 
 #include "Util.hpp"
 #include "Logging.hpp"

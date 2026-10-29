@@ -2,19 +2,19 @@
 
 constexpr uintmax_t MAX_LOG_SIZE = 1024 * 1024;
 
-fs::path GetLogDirectory()
+inline fs::path GetLogDirectory()
 {
 	auto path = GetAppDataDirectory() / L"Logs";
 	fs::create_directories(path);
 	return path;
 }
 
-fs::path GetLogPath()
+inline fs::path GetLogPath()
 {
 	return GetLogDirectory() / L"AudioPlaybackConnector.log";
 }
 
-void AppendLog(std::wstring_view message)
+inline void AppendLog(std::wstring_view message)
 {
 	try
 	{
@@ -56,7 +56,7 @@ void AppendLog(std::wstring_view message)
 	}
 }
 
-void AppendHresultLog(std::wstring_view action, HRESULT result)
+inline void AppendHresultLog(std::wstring_view action, HRESULT result)
 {
 	wchar_t code[16]{};
 	swprintf_s(code, L"0x%08X", static_cast<uint32_t>(result));
