@@ -17,7 +17,7 @@ Turn a Windows 10/11 PC into a Bluetooth speaker. This app enables the built-in 
 - Connect and disconnect paired phones from the notification area
 - Optional automatic reconnection on the next launch
 - Single-instance operation with support for multiple connected source devices
-- Phone A2DP input volume independent from the PC's other audio, with 50% as the neutral level
+- Phone A2DP input volume independent from the PC's other audio, with 50% as the neutral level and up to 2× gain above it
 - Improved A2DP connection lifecycle for Windows 11
 - Portable single-file executable with no installer
 - Official x86, x64 and ARM64 builds
@@ -51,7 +51,7 @@ SHA-256 checksums are included in `SHA256SUMS.txt` on the Release page.
 
 Right-click the notification-area icon to open Bluetooth settings or exit the app. When exiting, **Reconnect on next start** can remember active devices and reconnect them on the next launch.
 
-The volume slider targets only the Windows playback session that carries each connected phone's Bluetooth audio. It does not change the PC's speaker/headphone master volume or other apps. On first launch, the phone session's current level becomes the neutral reference: 50% preserves it, 0–50% attenuates it, and 50–100% uses any remaining session headroom. If that session is already at 100%, this API cannot provide further gain. The app watches for the phone session to appear or be recreated and applies the saved setting to the new session.
+The volume slider controls only the audio coming from the connected phone. 50% plays at the phone's normal level, 0–50% attenuates it, and 50–100% applies up to about 2× digital gain through a soft limiter. It does not change the PC's speaker/headphone master volume or other applications. Because the gain is applied to the app's own copy of the phone stream, the app silences the Windows-owned phone session only while it is actually playing that copy, and restores the session's previous level when the phone disconnects or the app exits. Each connected phone is processed independently.
 
 Settings and diagnostic logs are stored under `%LOCALAPPDATA%\AudioPlaybackConnector`, not beside the executable. An existing `AudioPlaybackConnector.json` beside the executable is migrated automatically.
 
@@ -61,7 +61,7 @@ English, Simplified Chinese and Traditional Chinese are selected automatically f
 
 ### Connected, but there is no audio
 
-The app follows the documented Windows `StartAsync()` / `OpenAsync()` sequence and waits for the connection to reach the actual `Opened` audio state. Reconnect-on-start performs one internal warm-up connection, fully releases it, and then creates the final connection to avoid the first A2DP link after boot becoming a silent link. **Repair audio** remains available as a manual fallback and performs up to three progressively delayed reconnects.
+The app follows the documented Windows `StartAsync()` / `OpenAsync()` sequence and waits for the connection to reach the actual `Opened` audio state. It silences the Windows-owned playback path only after it has captured real audio to play, so a failed takeover leaves the normal path audible instead of a connected-but-silent phone. **Repair audio** remains available as a manual fallback and performs up to three progressively delayed reconnects.
 
 ### Connection error, or still no audio after reconnecting
 
@@ -101,9 +101,9 @@ The app uses C++/WinRT and the Windows `AudioPlaybackConnection` API. Bluetooth 
 
 ## Connection reliability
 
-Windows can accept an A2DP `OpenAsync()` request before the transport reaches the real `Opened` state, and the first open after boot can also produce a link that looks connected but carries no samples. This build no longer treats request acceptance as proof that audio is ready and gives startup auto-reconnect a controlled warm-up cycle. The user-triggered **Repair audio** action retains a bounded three-attempt recovery sequence and leaves the final connection open. If audio is still silent after that recovery, restart the PC's Bluetooth as described above.
+Windows can accept an A2DP `OpenAsync()` request before the transport reaches the real `Opened` state, and the first open after boot can also produce a link that looks connected but carries no samples. This build no longer treats request acceptance as proof that audio is ready. The user-triggered **Repair audio** action retains a bounded three-attempt recovery sequence and leaves the final connection open. If audio is still silent after that recovery, restart the PC's Bluetooth as described above.
 
-When a connection fails with `0x8007001F`, the device row offers **Restart Bluetooth**. The app attempts to cycle the PC's Bluetooth radio only after a separate confirmation; this temporarily disconnects every Bluetooth device. It reconnects the phone only after observing both the off and on transitions. If Windows denies radio control or the cycle fails, the app explains the failure and opens Bluetooth Settings for manual recovery. This is a recovery option, not a fix for a failing Bluetooth driver.
+When a connection fails with `0x8007001F`, the app automatically cycles the PC's Bluetooth radio once and retries the connection. This temporarily disconnects every Bluetooth device, including keyboards and mice. The automatic attempt happens only once per device; if the retry still fails, the device row offers **Restart Bluetooth** for a manual retry. The app reconnects the phone only after observing both the off and on transitions. If Windows denies radio control or the cycle fails, the app explains the failure and opens Bluetooth Settings for manual recovery. This is a recovery option, not a fix for a failing Bluetooth driver.
 
 ## License and acknowledgments
 

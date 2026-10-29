@@ -58,6 +58,7 @@ private:
 	{
 		const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 		bool muted = false;
+		float originalVolume = 1.0f;
 		std::wstring failureReason;
 		std::wstring_view stage = L"Initialize audio worker";
 		try
@@ -68,24 +69,34 @@ private:
 			Check(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
 				__uuidof(IMMDeviceEnumerator), enumerator.put_void()));
 
-			std::wstring endpointGuid;
-			{
-				std::lock_guard lock(g_volumeMutex);
-				auto cached = g_phoneEndpointGuids.find(m_deviceId);
-				if (cached != g_phoneEndpointGuids.end())
-					endpointGuid = cached->second;
-			}
 			winrt::com_ptr<IMMDevice> input;
 			// A paused phone can leave its A2DP capture endpoint unplugged even
 			// though Bluetooth OpenAsync and State both report success. Keep the
 			// connection open and start the stream when playback activates it.
 			bool waitingLogged = false;
+			bool checkedLeftoverMute = false;
 			const auto waitStarted = std::chrono::steady_clock::now();
 			while (!m_stop && !g_shuttingDown)
 			{
+				// A previous run that ended while the phone was connected can leave
+				// the Windows playback session muted, which makes the normal path
+				// silent. Put it back before this worker silences it itself.
+				if (!checkedLeftoverMute)
+				{
+					PhoneAudioSession existing;
+					if (FindPhoneAudioSession(m_deviceId, existing))
+					{
+						checkedLeftoverMute = true;
+						if (existing.Level <= 0.001f)
+						{
+							SetPhoneAudioSessionVolume(m_deviceId, 1.0f);
+							AppendLog(L"Recovered phone session muted by a previous run: " + m_deviceId);
+						}
+					}
+				}
+
 				stage = L"Find phone audio endpoint";
-				if (endpointGuid.empty())
-					FindPhoneEndpointGuid(m_deviceId, endpointGuid);
+				std::wstring endpointGuid = FindCachedPhoneEndpointGuid(m_deviceId);
 				if (!endpointGuid.empty())
 				{
 					stage = L"Open phone audio endpoint";
@@ -99,7 +110,10 @@ private:
 						input = nullptr;
 					}
 					else
-						endpointGuid.clear();
+					{
+						std::lock_guard lock(g_volumeMutex);
+						g_phoneEndpointGuids.erase(std::wstring(m_deviceId));
+					}
 				}
 				if (!waitingLogged &&
 					std::chrono::steady_clock::now() - waitStarted >= std::chrono::seconds(1))
@@ -111,6 +125,7 @@ private:
 			}
 			if (m_stop || g_shuttingDown || !input)
 				throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_CANCELLED));
+
 			winrt::com_ptr<IAudioClient> captureClient;
 			Check(input->Activate(__uuidof(IAudioClient), CLSCTX_ALL,
 				nullptr, captureClient.put_void()));
@@ -183,13 +198,6 @@ private:
 						throw winrt::hresult_error(AUDCLNT_E_DEVICE_INVALIDATED);
 					nextOutputCheck = now + std::chrono::milliseconds(250);
 				}
-				if (now >= nextSessionCheck)
-				{
-					std::lock_guard lock(g_volumeApplyMutex);
-					if (!m_stop)
-						muted = SetPhoneSessionVolume(m_deviceId, 0.0f) || muted;
-					nextSessionCheck = now + std::chrono::milliseconds(500);
-				}
 				stage = L"Capture phone audio";
 				UINT32 packetFrames = 0;
 				Check(capture->GetNextPacketSize(&packetFrames));
@@ -201,8 +209,27 @@ private:
 					UINT64 position = 0;
 					UINT64 timestamp = 0;
 					Check(capture->GetBuffer(&source, &frames, &flags, &position, &timestamp));
+					const bool audible = !(flags & AUDCLNT_BUFFERFLAGS_SILENT) && frames > 0;
+
+					// Silence the Windows-owned copy only once this worker has real
+					// audio to play. A failed takeover therefore leaves the normal
+					// playback path audible instead of a connected-but-silent phone.
+					if (!muted && audible && std::chrono::steady_clock::now() >= nextSessionCheck)
+					{
+						nextSessionCheck = std::chrono::steady_clock::now() +
+							std::chrono::milliseconds(250);
+						PhoneAudioSession session;
+						if (FindPhoneAudioSession(m_deviceId, session))
+						{
+							originalVolume = session.Level <= 0.001f ? 1.0f : session.Level;
+							muted = SetPhoneAudioSessionVolume(m_deviceId, 0.0f);
+							if (muted)
+								AppendLog(L"Phone-only audio takeover started: " + m_deviceId);
+						}
+					}
+
 					HRESULT processing = S_OK;
-					if (muted && !(flags & AUDCLNT_BUFFERFLAGS_SILENT))
+					if (muted && audible)
 					{
 						UINT32 padding = 0;
 						processing = renderClient->GetCurrentPadding(&padding);
@@ -255,15 +282,11 @@ private:
 		}
 		if (muted)
 		{
-			try
-			{
-				std::lock_guard lock(g_volumeApplyMutex);
-				SetPhoneSessionVolume(m_deviceId, static_cast<float>(DEFAULT_PLAYBACK_VOLUME));
-			}
-			catch (...)
-			{
-				AppendLog(L"Could not restore phone audio session: " + m_deviceId);
-			}
+			// Windows keeps this session volume across connections. Restore the
+			// value captured before the takeover so the next normal playback is
+			// neither muted nor louder than the user left it.
+			if (SetPhoneAudioSessionVolume(m_deviceId, originalVolume))
+				AppendLog(L"Phone audio session volume restored: " + m_deviceId);
 		}
 		if (SUCCEEDED(apartment))
 			CoUninitialize();

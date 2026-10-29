@@ -70,6 +70,7 @@ std::unordered_map<std::wstring, AudioPlaybackConnectionEntry> g_audioPlaybackCo
 std::unordered_map<std::wstring, std::shared_ptr<PhoneAudioProcessor>> g_phoneAudioProcessors;
 std::unordered_map<std::wstring, std::wstring> g_deviceErrorMessages;
 std::unordered_set<std::wstring> g_radioRecoveryCandidates;
+std::unordered_set<std::wstring> g_autoRadioRecoveryAttempted;
 std::unordered_map<std::wstring, std::wstring> g_availableDeviceNames;
 std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> g_lastConnectionCloseTimes;
 std::unordered_set<std::wstring> g_repairingDevices;
@@ -78,7 +79,6 @@ std::recursive_mutex g_connectionMutex;
 std::mutex g_deviceListMutex;
 std::mutex g_logMutex;
 std::mutex g_volumeMutex;
-std::mutex g_volumeApplyMutex;
 HICON g_hIconLight = nullptr;
 HICON g_hIconDark = nullptr;
 NOTIFYICONDATAW g_nid = {
@@ -93,7 +93,6 @@ NOTIFYICONIDENTIFIER g_niid = {
 UINT WM_TASKBAR_CREATED = 0;
 bool g_reconnect = false;
 std::atomic<double> g_playbackVolume = DEFAULT_PLAYBACK_VOLUME;
-std::unordered_map<std::wstring, float> g_sessionVolumeReferences;
 std::unordered_map<std::wstring, std::wstring> g_phoneEndpointGuids;
 std::vector<std::wstring> g_lastDevices;
 uint64_t g_nextConnectionGeneration = 0;

@@ -85,52 +85,51 @@ bool FindPhoneEndpointGuid(std::wstring_view deviceId, std::wstring& endpointGui
 	return false;
 }
 
-float MapPlaybackVolumeToSession(float slider, float reference)
+std::wstring FindCachedPhoneEndpointGuid(std::wstring_view deviceId)
 {
-	slider = std::clamp(slider, 0.0f, 1.0f);
-	reference = std::clamp(reference, 0.0f, 1.0f);
-	constexpr float neutral = static_cast<float>(DEFAULT_PLAYBACK_VOLUME);
-	if (slider <= neutral)
-		return reference * (slider / neutral);
-	return reference + (1.0f - reference) * ((slider - neutral) / (1.0f - neutral));
-}
-
-bool SetPhoneSessionVolume(std::wstring_view deviceId, float slider)
-{
-	std::wstring endpointGuid;
 	{
 		std::lock_guard lock(g_volumeMutex);
 		auto cached = g_phoneEndpointGuids.find(std::wstring(deviceId));
 		if (cached != g_phoneEndpointGuids.end())
-			endpointGuid = cached->second;
-	}
-	if (endpointGuid.empty())
-	{
-		if (!FindPhoneEndpointGuid(deviceId, endpointGuid))
-			return false;
-		std::lock_guard lock(g_volumeMutex);
-		g_phoneEndpointGuids.insert_or_assign(std::wstring(deviceId), endpointGuid);
+			return cached->second;
 	}
 
+	std::wstring endpointGuid;
+	if (!FindPhoneEndpointGuid(deviceId, endpointGuid))
+		return {};
+
+	std::lock_guard lock(g_volumeMutex);
+	g_phoneEndpointGuids.insert_or_assign(std::wstring(deviceId), endpointGuid);
+	return endpointGuid;
+}
+
+struct PhoneAudioSession
+{
+	winrt::com_ptr<ISimpleAudioVolume> Volume;
+	float Level{};
+};
+
+// The session is created by AudioSrv for the A2DP sink's render path. Windows
+// keeps its volume across connections, so callers must restore any value they
+// change even when the phone later pauses or disconnects.
+bool FindPhoneAudioSession(std::wstring_view deviceId, PhoneAudioSession& session)
+{
+	const auto endpointGuid = FindCachedPhoneEndpointGuid(deviceId);
+	if (endpointGuid.empty())
+		return false;
+
 	winrt::com_ptr<IMMDeviceEnumerator> enumerator;
-	auto result = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
-		__uuidof(IMMDeviceEnumerator), enumerator.put_void());
-	if (FAILED(result))
-	{
-		AppendHresultLog(L"Create audio device enumerator failed", result);
+	if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+		__uuidof(IMMDeviceEnumerator), enumerator.put_void())))
 		return false;
-	}
+
 	winrt::com_ptr<IMMDeviceCollection> outputs;
-	result = enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, outputs.put());
-	if (FAILED(result))
-	{
-		AppendHresultLog(L"Enumerate render endpoints failed", result);
+	if (FAILED(enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, outputs.put())))
 		return false;
-	}
 	UINT outputCount = 0;
 	if (FAILED(outputs->GetCount(&outputCount)))
 		return false;
-	bool found = false;
+
 	for (UINT outputIndex = 0; outputIndex < outputCount; ++outputIndex)
 	{
 		winrt::com_ptr<IMMDevice> output;
@@ -148,60 +147,52 @@ bool SetPhoneSessionVolume(std::wstring_view deviceId, float slider)
 			continue;
 		for (int sessionIndex = 0; sessionIndex < sessionCount; ++sessionIndex)
 		{
-			winrt::com_ptr<IAudioSessionControl> session;
-			if (FAILED(sessions->GetSession(sessionIndex, session.put())))
+			winrt::com_ptr<IAudioSessionControl> control;
+			if (FAILED(sessions->GetSession(sessionIndex, control.put())))
 				continue;
-			auto session2 = session.try_as<IAudioSessionControl2>();
-			if (!session2)
+			auto control2 = control.try_as<IAudioSessionControl2>();
+			if (!control2)
 				continue;
 			AudioSessionState state{};
-			if (FAILED(session2->GetState(&state)) || state == AudioSessionStateExpired)
+			if (FAILED(control2->GetState(&state)) || state == AudioSessionStateExpired)
 				continue;
 			LPWSTR rawSessionId = nullptr;
-			if (FAILED(session2->GetSessionIdentifier(&rawSessionId)))
+			if (FAILED(control2->GetSessionIdentifier(&rawSessionId)))
 				continue;
 			std::wstring sessionId(rawSessionId);
 			CoTaskMemFree(rawSessionId);
 			if (!ContainsIgnoreCase(sessionId, endpointGuid))
 				continue;
-			auto volume = session.try_as<ISimpleAudioVolume>();
+			auto volume = control.try_as<ISimpleAudioVolume>();
 			if (!volume)
 				continue;
-			float current = 1.0f;
-			if (FAILED(volume->GetMasterVolume(&current)))
+			float level = 0;
+			if (FAILED(volume->GetMasterVolume(&level)))
 				continue;
-			float reference;
-			{
-				std::lock_guard lock(g_volumeMutex);
-				auto [it, inserted] = g_sessionVolumeReferences.try_emplace(endpointGuid,
-					std::clamp(current, 0.0f, 1.0f));
-				reference = it->second;
-				if (inserted)
-					AppendLog(L"Phone session neutral reference: " + endpointGuid + L" at " +
-						std::to_wstring(static_cast<int>(std::lround(reference * 100.0f))) + L"%");
-			}
-			const auto target = MapPlaybackVolumeToSession(slider, reference);
-			const bool changed = std::abs(current - target) > 0.001f;
-			if (changed)
-			{
-				result = volume->SetMasterVolume(target, nullptr);
-				if (FAILED(result))
-				{
-					AppendHresultLog(L"Set phone session volume failed", result);
-					continue;
-				}
-			}
-			found = true;
-			if (changed)
-				AppendLog(L"Applied phone-only session volume: slider " +
-					std::to_wstring(static_cast<int>(std::lround(slider * 100.0f))) + L"%, session " +
-					std::to_wstring(static_cast<int>(std::lround(target * 100.0f))) + L"%");
+			session.Volume = volume;
+			session.Level = std::clamp(level, 0.0f, 1.0f);
+			return true;
 		}
 	}
-	if (found && slider >= static_cast<float>(DEFAULT_PLAYBACK_VOLUME))
+	return false;
+}
+
+bool SetPhoneAudioSessionVolume(std::wstring_view deviceId, float level)
+{
+	PhoneAudioSession session;
+	if (!FindPhoneAudioSession(deviceId, session))
+		return false;
+
+	level = std::clamp(level, 0.0f, 1.0f);
+	if (std::abs(session.Level - level) < 0.001f)
+		return true;
+	const HRESULT result = session.Volume->SetMasterVolume(level, nullptr);
+	if (FAILED(result))
 	{
-		std::lock_guard lock(g_volumeMutex);
-		g_sessionVolumeReferences.erase(endpointGuid);
+		AppendHresultLog(L"Set phone audio session volume failed", result);
+		return false;
 	}
-	return found;
+	AppendLog(L"Phone audio session volume set to " +
+		std::to_wstring(static_cast<int>(std::lround(level * 100.0f))) + L"%: " + std::wstring(deviceId));
+	return true;
 }

@@ -36,6 +36,31 @@ winrt::Windows::UI::Color MakeColor(uint8_t alpha, uint8_t red, uint8_t green, u
 	return { alpha, red, green, blue };
 }
 
+// XAML defaults to en-US, which makes DirectWrite fall back to SimSun for
+// Chinese text. Match the XAML tree to the UI language so Chinese uses the
+// same system font family as the rest of Windows.
+void ApplyUiLanguage(winrt::Windows::UI::Xaml::FrameworkElement const& element)
+{
+	wchar_t localeName[LOCALE_NAME_MAX_LENGTH]{};
+	const auto language = MAKELCID(GetThreadUILanguage(), SORT_DEFAULT);
+	if (LCIDToLocaleName(language, localeName, LOCALE_NAME_MAX_LENGTH, 0) > 0)
+		element.Language(localeName);
+}
+
+// The default XAML font family has no CJK glyphs and falls back to SimSun.
+// Use the font Windows itself uses for the same UI language instead.
+winrt::Windows::UI::Xaml::Media::FontFamily UiFontFamily()
+{
+	const auto language = GetThreadUILanguage();
+	if (PRIMARYLANGID(language) == LANG_CHINESE)
+	{
+		if (SUBLANGID(language) == SUBLANG_CHINESE_TRADITIONAL)
+			return winrt::Windows::UI::Xaml::Media::FontFamily(L"Microsoft JhengHei UI");
+		return winrt::Windows::UI::Xaml::Media::FontFamily(L"Microsoft YaHei UI");
+	}
+	return winrt::Windows::UI::Xaml::Media::FontFamily(L"Segoe UI Variable Text");
+}
+
 winrt::Windows::UI::Xaml::Media::Brush CreateWin11SurfaceBrush(bool lightTheme)
 {
 	using namespace winrt::Windows::UI::Xaml::Media;
@@ -208,6 +233,27 @@ winrt::Windows::Foundation::IAsyncAction StopPhoneAudioAndWait(std::wstring devi
 		AppendLog(L"Phone audio worker stop timed out: " + deviceId);
 }
 
+// Workers restore the Windows session volume they changed, so shutdown must let
+// them finish before the connection (and with it the session) goes away.
+void StopAllPhoneAudioBlocking()
+{
+	std::vector<std::shared_ptr<PhoneAudioProcessor>> processors;
+	{
+		std::lock_guard lock(g_connectionMutex);
+		for (auto& [_, processor] : g_phoneAudioProcessors)
+		{
+			processor->Stop();
+			processors.push_back(processor);
+		}
+		g_phoneAudioProcessors.clear();
+	}
+	for (const auto& processor : processors)
+	{
+		if (!processor->WaitStopped())
+			AppendLog(L"Phone audio worker stop timed out during shutdown");
+	}
+}
+
 void CloseCurrentConnection(std::wstring_view deviceId, uint64_t generation)
 {
 	std::lock_guard lock(g_connectionMutex);
@@ -288,6 +334,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	winrt::check_hresult(desktopSourceNative2->get_WindowHandle(&g_hWndXaml));
 
 	g_xamlCanvas = Canvas();
+	ApplyUiLanguage(g_xamlCanvas);
 	desktopSource.Content(g_xamlCanvas);
 
 	SetupFlyout();
@@ -353,13 +400,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (g_reconnect)
 			SaveSettings();
 
+		StopAllPhoneAudioBlocking();
 		bool releasedConnections = false;
 		{
 			std::lock_guard lock(g_connectionMutex);
 			releasedConnections = !g_audioPlaybackConnections.empty();
-			for (auto& [_, processor] : g_phoneAudioProcessors)
-				processor->Stop();
-			g_phoneAudioProcessors.clear();
 			for (const auto& connection : g_audioPlaybackConnections)
 				connection.second.Connection.Close();
 			g_audioPlaybackConnections.clear();
@@ -391,11 +436,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_DESTROY:
 		g_shuttingDown = true;
 		AppendLog(L"Application stopped");
+		StopAllPhoneAudioBlocking();
 		{
 			std::lock_guard lock(g_connectionMutex);
-			for (auto& [_, processor] : g_phoneAudioProcessors)
-				processor->Stop();
-			g_phoneAudioProcessors.clear();
 			for (const auto& connection : g_audioPlaybackConnections)
 				connection.second.Connection.Close();
 			g_audioPlaybackConnections.clear();
@@ -544,12 +587,14 @@ void SetupFlyout()
 
 	TextBlock title;
 	title.Text(_(L"Exit"));
+	title.FontFamily(UiFontFamily());
 	title.FontSize(20);
 	title.FontWeight({ 600 });
 	title.Foreground(textBrush);
 
 	TextBlock textBlock;
 	textBlock.Text(_(L"All connections will be closed.\nExit anyway?"));
+	textBlock.FontFamily(UiFontFamily());
 	textBlock.FontSize(14);
 	textBlock.TextWrapping(TextWrapping::Wrap);
 	textBlock.Foreground(secondaryTextBrush);
@@ -558,6 +603,7 @@ void SetupFlyout()
 	static CheckBox checkbox;
 	checkbox.IsChecked(g_reconnect);
 	checkbox.Content(winrt::box_value(_(L"Reconnect on next start")));
+	checkbox.FontFamily(UiFontFamily());
 	checkbox.FontSize(14);
 	checkbox.Foreground(textBrush);
 	checkbox.Margin({ 0, 0, 0, 18 });
@@ -565,6 +611,7 @@ void SetupFlyout()
 	Button button;
 	button.Content(winrt::box_value(_(L"Exit")));
 	button.HorizontalAlignment(HorizontalAlignment::Right);
+	button.FontFamily(UiFontFamily());
 	button.FontSize(14);
 	button.FontWeight({ 600 });
 	button.Padding({ 18, 8, 18, 8 });
@@ -593,6 +640,7 @@ void SetupFlyout()
 
 	Border card;
 	card.RequestedTheme(lightTheme ? ElementTheme::Light : ElementTheme::Dark);
+	ApplyUiLanguage(card);
 	card.Background(CreateWin11SurfaceBrush(lightTheme));
 	card.CornerRadius({ 12, 12, 12, 12 });
 	card.BorderBrush(SolidColorBrush(lightTheme ? MakeColor(90, 255, 255, 255) : MakeColor(90, 255, 255, 255)));
@@ -618,6 +666,7 @@ void SetupMenu()
 
 	MenuFlyoutItem settingsItem;
 	settingsItem.Text(_(L"Bluetooth Settings"));
+	settingsItem.FontFamily(UiFontFamily());
 	settingsItem.Icon(settingsIcon);
 	settingsItem.Click([](const auto&, const auto&) {
 		winrt::Windows::System::Launcher::LaunchUriAsync(Uri(L"ms-settings:bluetooth"));
@@ -628,6 +677,7 @@ void SetupMenu()
 
 	MenuFlyoutItem logItem;
 	logItem.Text(_(L"Open Logs Folder"));
+	logItem.FontFamily(UiFontFamily());
 	logItem.Icon(logIcon);
 	logItem.Click([](const auto&, const auto&) {
 		try
@@ -646,6 +696,7 @@ void SetupMenu()
 
 	MenuFlyoutItem exitItem;
 	exitItem.Text(_(L"Exit"));
+	exitItem.FontFamily(UiFontFamily());
 	exitItem.Icon(closeIcon);
 	exitItem.Click([](const auto&, const auto&) {
 		bool hasConnections = false;
@@ -680,6 +731,8 @@ void SetupMenu()
 	menu.Items().Append(settingsItem);
 	menu.Items().Append(logItem);
 	menu.Items().Append(exitItem);
+	for (const auto& item : menu.Items())
+		ApplyUiLanguage(item.as<FrameworkElement>());
 	ApplyWin11MenuStyle(menu, lightTheme);
 	menu.Opened([](const auto& sender, const auto&) {
 		auto menuItems = sender.as<MenuFlyout>().Items();
@@ -971,6 +1024,7 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 				co_return;
 			it->second.Connecting = false;
 			g_deviceErrorMessages.erase(deviceId);
+			g_autoRadioRecoveryAttempted.erase(deviceId);
 		}
 		AppendLog(L"Connection opened: " + deviceId);
 	}
@@ -979,14 +1033,27 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 		if (generation != 0 && IsCurrentConnection(deviceId, generation))
 			CloseCurrentConnection(deviceId, generation);
 
+		// A cold Windows Bluetooth stack can reject the first open with
+		// 0x8007001F until the radio is cycled. Try that once per device and
+		// only fall back to the visible error when the recovery did not help.
+		bool startRadioRecovery = false;
 		{
 			std::lock_guard lock(g_connectionMutex);
-			g_deviceErrorMessages[deviceId] = errorMessage.empty() ? _(L"Unknown error") : errorMessage;
+			startRadioRecovery = radioRecoveryCandidate &&
+				g_autoRadioRecoveryAttempted.insert(deviceId).second;
 			if (radioRecoveryCandidate)
 				g_radioRecoveryCandidates.insert(deviceId);
+			if (!startRadioRecovery)
+				g_deviceErrorMessages[deviceId] = errorMessage.empty() ? _(L"Unknown error") : errorMessage;
 		}
 		AppendLog(L"Connection failed: " + deviceId + L"; " +
 			(errorMessage.empty() ? std::wstring(L"Unknown error") : errorMessage));
+		if (startRadioRecovery)
+		{
+			AppendLog(L"Automatic Bluetooth radio recovery after 0x8007001F: " + deviceId);
+			RecoverBluetoothRadio(deviceId);
+			co_return;
+		}
 	}
 
 	QueueDeviceListRefresh();
@@ -1379,11 +1446,13 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 
 	TextBlock name;
 	name.Text(deviceName.empty() ? _(L"Unknown device") : deviceName);
+	name.FontFamily(UiFontFamily());
 	name.FontSize(15);
 	name.Foreground(CreateTextBrush(lightTheme));
 	name.TextTrimming(TextTrimming::CharacterEllipsis);
 
 	TextBlock status;
+	status.FontFamily(UiFontFamily());
 	status.FontSize(13);
 	status.Foreground(CreateTextBrush(lightTheme, 175));
 	if (repairing)
@@ -1405,6 +1474,7 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 	Button action;
 	action.MinWidth(104);
 	action.Padding({ 12, 6, 12, 6 });
+	action.FontFamily(UiFontFamily());
 	action.FontSize(13);
 	action.CornerRadius({ 6, 6, 6, 6 });
 	action.IsEnabled(!connecting && !g_radioRecoveryInProgress);
@@ -1431,6 +1501,7 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 		Button repair;
 		repair.MinWidth(76);
 		repair.Padding({ 10, 6, 10, 6 });
+		repair.FontFamily(UiFontFamily());
 		repair.FontSize(13);
 		repair.CornerRadius({ 6, 6, 6, 6 });
 		repair.IsEnabled(!repairing);
@@ -1456,6 +1527,7 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 		Button recover;
 		recover.MinWidth(105);
 		recover.Padding({ 10, 6, 10, 6 });
+		recover.FontFamily(UiFontFamily());
 		recover.FontSize(13);
 		recover.CornerRadius({ 6, 6, 6, 6 });
 		recover.IsEnabled(!connecting && !g_radioRecoveryInProgress);
@@ -1508,6 +1580,7 @@ void RefreshDevicePicker()
 	{
 		TextBlock empty;
 		empty.Text(g_deviceEnumerationCompleted ? _(L"No compatible audio devices found") : _(L"Searching for Bluetooth audio devices..."));
+		empty.FontFamily(UiFontFamily());
 		empty.FontSize(14);
 		empty.Foreground(CreateTextBrush(lightTheme, 190));
 		empty.TextWrapping(TextWrapping::Wrap);
@@ -1590,6 +1663,7 @@ void SetupDevicePicker()
 
 	TextBlock title;
 	title.Text(_(L"Connect"));
+	title.FontFamily(UiFontFamily());
 	title.FontSize(20);
 	title.FontWeight({ 600 });
 	title.Foreground(textBrush);
@@ -1602,6 +1676,7 @@ void SetupDevicePicker()
 
 	TextBlock subtitle;
 	subtitle.Text(_(L"Select a Bluetooth audio device"));
+	subtitle.FontFamily(UiFontFamily());
 	subtitle.FontSize(13);
 	subtitle.Foreground(secondaryTextBrush);
 	subtitle.Margin({ 0, 4, 0, 0 });
@@ -1629,6 +1704,7 @@ void SetupDevicePicker()
 
 	TextBlock volumeLabel;
 	volumeLabel.Text(_(L"Playback volume"));
+	volumeLabel.FontFamily(UiFontFamily());
 	volumeLabel.VerticalAlignment(VerticalAlignment::Center);
 	volumeLabel.Foreground(textBrush);
 	Grid::SetColumn(volumeLabel, 0);
@@ -1644,6 +1720,7 @@ void SetupDevicePicker()
 	volumeRow.Children().Append(volumeSlider);
 
 	TextBlock volumeValue;
+	volumeValue.FontFamily(UiFontFamily());
 	volumeValue.Text(std::to_wstring(static_cast<int>(std::lround(g_playbackVolume.load() * 100.0))) + L"%");
 	volumeValue.TextAlignment(TextAlignment::Right);
 	volumeValue.VerticalAlignment(VerticalAlignment::Center);
@@ -1659,6 +1736,7 @@ void SetupDevicePicker()
 
 	Button settingsButton;
 	settingsButton.Content(winrt::box_value(_(L"Bluetooth Settings")));
+	settingsButton.FontFamily(UiFontFamily());
 	settingsButton.FontSize(13);
 	settingsButton.Padding({ 12, 7, 12, 7 });
 	settingsButton.CornerRadius({ 6, 6, 6, 6 });
@@ -1670,6 +1748,7 @@ void SetupDevicePicker()
 
 	Button cancelButton;
 	cancelButton.Content(winrt::box_value(_(L"Cancel")));
+	cancelButton.FontFamily(UiFontFamily());
 	cancelButton.FontSize(13);
 	cancelButton.FontWeight({ 600 });
 	cancelButton.Padding({ 16, 7, 16, 7 });
@@ -1698,6 +1777,7 @@ void SetupDevicePicker()
 
 	Border card;
 	card.RequestedTheme(lightTheme ? ElementTheme::Light : ElementTheme::Dark);
+	ApplyUiLanguage(card);
 	card.Background(CreateWin11SurfaceBrush(lightTheme));
 	card.CornerRadius({ 12, 12, 12, 12 });
 	card.BorderBrush(SolidColorBrush(lightTheme ? MakeColor(90, 255, 255, 255) : MakeColor(90, 255, 255, 255)));

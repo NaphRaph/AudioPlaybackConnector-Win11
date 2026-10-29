@@ -38,7 +38,6 @@ void DefaultSettings()
 {
 	g_reconnect = false;
 	g_playbackVolume = DEFAULT_PLAYBACK_VOLUME;
-	g_sessionVolumeReferences.clear();
 	g_phoneEndpointGuids.clear();
 	g_lastDevices.clear();
 }
