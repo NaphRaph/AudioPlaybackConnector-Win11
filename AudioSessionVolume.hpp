@@ -106,6 +106,9 @@ inline std::wstring FindCachedPhoneEndpointGuid(std::wstring_view deviceId)
 struct PhoneAudioSession
 {
 	winrt::com_ptr<ISimpleAudioVolume> Volume;
+	// Changes when Windows recreates the session (e.g. the phone switches
+	// outputs), which is the moment a remembered level should be re-applied.
+	std::wstring InstanceId;
 	float Level{};
 };
 
@@ -169,6 +172,12 @@ inline bool FindPhoneAudioSession(std::wstring_view deviceId, PhoneAudioSession&
 			float level = 0;
 			if (FAILED(volume->GetMasterVolume(&level)))
 				continue;
+			LPWSTR rawInstanceId = nullptr;
+			if (SUCCEEDED(control2->GetSessionInstanceIdentifier(&rawInstanceId)))
+			{
+				session.InstanceId.assign(rawInstanceId);
+				CoTaskMemFree(rawInstanceId);
+			}
 			session.Volume = volume;
 			session.Level = std::clamp(level, 0.0f, 1.0f);
 			return true;

@@ -80,10 +80,12 @@ namespace
 }
 
 // The slider controls the Windows playback session that carries each phone's
-// audio. Windows keeps that session volume across connections and recreates the
-// session when the phone switches outputs, so a light poll keeps it in sync.
+// audio. A periodic write fights Windows/AVRCP and makes the level oscillate, so
+// the worker only writes when the user moved the slider or when Windows
+// recreated the session, and otherwise follows the session level.
 void RunPhoneVolumeApplier()
 {
+	std::unordered_map<std::wstring, std::wstring> sessionInstances;
 	while (!g_volumeApplierStop && !g_shuttingDown)
 	{
 		std::vector<std::wstring> devices;
@@ -96,32 +98,45 @@ void RunPhoneVolumeApplier()
 			}
 		}
 
-		const auto volume = static_cast<float>(g_playbackVolume.load());
-		if (!g_playbackVolumeExplicit)
+		const bool pending = g_volumeApplyPending.load();
+		const bool explicitVolume = g_playbackVolumeExplicit.load();
+		bool applied = false;
+		for (const auto& deviceId : devices)
 		{
-			// First sight of a phone session: take its current level as the
-			// slider value instead of forcing a level on connect. Moving the
-			// slider later marks the value as explicit and takes over.
-			for (const auto& deviceId : devices)
+			PhoneAudioSession session;
+			if (!FindPhoneAudioSession(deviceId, session))
+				continue;
+
+			auto [instance, inserted] = sessionInstances.try_emplace(deviceId, session.InstanceId);
+			const bool recreated = !inserted && instance->second != session.InstanceId;
+			if (recreated)
+				instance->second = session.InstanceId;
+
+			if (explicitVolume)
 			{
-				PhoneAudioSession session;
-				if (!FindPhoneAudioSession(deviceId, session))
-					continue;
-				const auto adopted = static_cast<double>(std::clamp(session.Level, 0.0f, 1.0f));
-				g_playbackVolume.store(adopted);
-				g_playbackVolumeExplicit = true;
-				AppendLog(L"Adopted phone session volume: " +
-					std::to_wstring(static_cast<int>(std::lround(adopted * 100.0))) + L"%");
-				if (IsWindow(g_hWnd))
-					PostMessageW(g_hWnd, WM_VOLUME_CHANGED, 0, 0);
-				break;
+				// The user chose this level. Apply it when the session first
+				// appears and whenever Windows recreates it, but never on a poll.
+				if (pending || inserted || recreated)
+				{
+					SetPhoneAudioSessionVolume(deviceId,
+						static_cast<float>(g_playbackVolume.load()));
+					applied = true;
+				}
+				continue;
 			}
+
+			// No user choice yet: follow the session level instead of forcing one.
+			const auto current = static_cast<double>(session.Level);
+			if (std::abs(current - g_playbackVolume.load()) < 0.005)
+				continue;
+			g_playbackVolume.store(current);
+			AppendLog(L"Adopted phone session volume: " +
+				std::to_wstring(static_cast<int>(std::lround(current * 100.0))) + L"%");
+			if (IsWindow(g_hWnd))
+				PostMessageW(g_hWnd, WM_VOLUME_CHANGED, 0, 0);
 		}
-		else
-		{
-			for (const auto& deviceId : devices)
-				SetPhoneAudioSessionVolume(deviceId, volume);
-		}
+		if (pending && applied)
+			g_volumeApplyPending = false;
 
 		std::this_thread::sleep_for(std::chrono::milliseconds(500));
 	}

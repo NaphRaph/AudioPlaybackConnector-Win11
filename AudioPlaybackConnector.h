@@ -96,6 +96,9 @@ inline std::atomic<double> g_playbackVolume = DEFAULT_PLAYBACK_VOLUME;
 // false, the app adopts the phone session's current volume instead of changing
 // it, so connecting never alters the loudness by itself.
 inline std::atomic_bool g_playbackVolumeExplicit = false;
+// Set when the user moves the slider; the volume worker applies it once and
+// then follows the session again instead of writing on every poll.
+inline std::atomic_bool g_volumeApplyPending = false;
 inline Slider g_volumeSlider = nullptr;
 inline std::unordered_map<std::wstring, std::wstring> g_phoneEndpointGuids;
 inline std::vector<std::wstring> g_lastDevices;

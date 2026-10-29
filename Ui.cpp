@@ -628,6 +628,7 @@ void SetupDevicePicker()
 		const auto value = sender.as<Slider>().Value();
 		g_playbackVolume.store(std::clamp(value / 100.0, 0.0, 1.0));
 		g_playbackVolumeExplicit = true;
+		g_volumeApplyPending = true;
 		volumeValue.Text(std::to_wstring(static_cast<int>(std::lround(value))) + L"%");
 	});
 
