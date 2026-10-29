@@ -260,6 +260,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_CONNECTION_STATE_CHANGED:
 		HandleConnectionStateChanged(reinterpret_cast<ConnectionStateChangedMessage*>(lParam));
 		break;
+	case WM_VOLUME_CHANGED:
+		if (g_volumeSlider)
+			g_volumeSlider.Value(g_playbackVolume.load() * 100.0);
+		break;
 	case WM_DEVICE_LIST_CHANGED:
 		RefreshDevicePicker();
 		break;

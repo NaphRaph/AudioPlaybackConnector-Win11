@@ -16,6 +16,7 @@ constexpr UINT WM_NOTIFYICON = WM_APP + 1;
 constexpr UINT WM_CONNECTDEVICE = WM_APP + 2;
 constexpr UINT WM_CONNECTION_STATE_CHANGED = WM_APP + 3;
 constexpr UINT WM_DEVICE_LIST_CHANGED = WM_APP + 4;
+constexpr UINT WM_VOLUME_CHANGED = WM_APP + 5;
 constexpr UINT_PTR SHUTDOWN_TIMER_ID = 1;
 constexpr UINT SHUTDOWN_RELEASE_DELAY_MS = 2000;
 constexpr auto CONNECTION_RELEASE_COOLDOWN = std::chrono::milliseconds(1500);
@@ -91,6 +92,11 @@ inline NOTIFYICONIDENTIFIER g_niid = {
 inline UINT WM_TASKBAR_CREATED = 0;
 inline bool g_reconnect = false;
 inline std::atomic<double> g_playbackVolume = DEFAULT_PLAYBACK_VOLUME;
+// False until the saved setting or the user establishes the slider value. While
+// false, the app adopts the phone session's current volume instead of changing
+// it, so connecting never alters the loudness by itself.
+inline std::atomic_bool g_playbackVolumeExplicit = false;
+inline Slider g_volumeSlider = nullptr;
 inline std::unordered_map<std::wstring, std::wstring> g_phoneEndpointGuids;
 inline std::vector<std::wstring> g_lastDevices;
 inline uint64_t g_nextConnectionGeneration = 0;

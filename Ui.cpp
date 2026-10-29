@@ -613,6 +613,7 @@ void SetupDevicePicker()
 	volumeSlider.VerticalAlignment(VerticalAlignment::Center);
 	Grid::SetColumn(volumeSlider, 1);
 	volumeRow.Children().Append(volumeSlider);
+	g_volumeSlider = volumeSlider;
 
 	TextBlock volumeValue;
 	volumeValue.FontFamily(UiFontFamily());
@@ -626,6 +627,7 @@ void SetupDevicePicker()
 	volumeSlider.ValueChanged([volumeValue](const auto& sender, const auto&) {
 		const auto value = sender.as<Slider>().Value();
 		g_playbackVolume.store(std::clamp(value / 100.0, 0.0, 1.0));
+		g_playbackVolumeExplicit = true;
 		volumeValue.Text(std::to_wstring(static_cast<int>(std::lround(value))) + L"%");
 	});
 

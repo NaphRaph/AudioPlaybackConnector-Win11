@@ -67,17 +67,16 @@ inline void LoadSettings()
 		std::wstring utf16 = Utf8ToUtf16(string);
 		auto jsonObj = JsonObject::Parse(utf16);
 		g_reconnect = jsonObj.Lookup(L"reconnect").GetBoolean();
-		// Version 6 controls the Windows playback session volume directly, so
-		// 100% is the phone's normal level. Versions 4-5 used 50% as the neutral
-		// point of a digital gain path; shift them so the loudness is preserved.
+		// Version 6 stores the Windows playback session volume. Older versions
+		// used a digital gain whose 50% was the neutral point, so their value is
+		// not carried over: the app adopts the session's current volume instead,
+		// which keeps the loudness unchanged after an upgrade.
 		const auto volumeControlVersion = jsonObj.HasKey(L"volumeControlVersion") ?
 			static_cast<int>(jsonObj.Lookup(L"volumeControlVersion").GetNumber()) : 1;
-		if (volumeControlVersion >= 4 && jsonObj.HasKey(L"playbackVolume"))
+		if (volumeControlVersion >= 6 && jsonObj.HasKey(L"playbackVolume"))
 		{
-			double volume = std::clamp(jsonObj.Lookup(L"playbackVolume").GetNumber(), 0.0, 1.0);
-			if (volumeControlVersion < 6)
-				volume = (std::min)(1.0, volume * 2.0);
-			g_playbackVolume = volume;
+			g_playbackVolume = std::clamp(jsonObj.Lookup(L"playbackVolume").GetNumber(), 0.0, 1.0);
+			g_playbackVolumeExplicit = true;
 		}
 
 		auto lastDevices = jsonObj.Lookup(L"lastDevices").GetArray();
@@ -97,8 +96,17 @@ inline void SaveSettings()
 	{
 		JsonObject jsonObj;
 		jsonObj.Insert(L"reconnect", JsonValue::CreateBooleanValue(g_reconnect));
-		jsonObj.Insert(L"playbackVolume", JsonValue::CreateNumberValue(g_playbackVolume.load()));
-		jsonObj.Insert(L"volumeControlVersion", JsonValue::CreateNumberValue(VOLUME_CONTROL_VERSION));
+		// Only persist the slider once its value is meaningful. Writing a
+		// placeholder would make the next launch force that level on connect.
+		if (g_playbackVolumeExplicit)
+		{
+			jsonObj.Insert(L"playbackVolume", JsonValue::CreateNumberValue(g_playbackVolume.load()));
+			jsonObj.Insert(L"volumeControlVersion", JsonValue::CreateNumberValue(VOLUME_CONTROL_VERSION));
+		}
+		else
+		{
+			jsonObj.Insert(L"volumeControlVersion", JsonValue::CreateNumberValue(5));
+		}
 
 		JsonArray lastDevices;
 		{

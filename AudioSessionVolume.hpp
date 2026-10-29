@@ -193,6 +193,7 @@ inline bool SetPhoneAudioSessionVolume(std::wstring_view deviceId, float level)
 		return false;
 	}
 	AppendLog(L"Phone audio session volume set to " +
-		std::to_wstring(static_cast<int>(std::lround(level * 100.0f))) + L"%: " + std::wstring(deviceId));
+		std::to_wstring(static_cast<int>(std::lround(level * 100.0f))) + L"% (was " +
+		std::to_wstring(static_cast<int>(std::lround(session.Level * 100.0f))) + L"%): " + std::wstring(deviceId));
 	return true;
 }

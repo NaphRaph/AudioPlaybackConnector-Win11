@@ -97,8 +97,31 @@ void RunPhoneVolumeApplier()
 		}
 
 		const auto volume = static_cast<float>(g_playbackVolume.load());
-		for (const auto& deviceId : devices)
-			SetPhoneAudioSessionVolume(deviceId, volume);
+		if (!g_playbackVolumeExplicit)
+		{
+			// First sight of a phone session: take its current level as the
+			// slider value instead of forcing a level on connect. Moving the
+			// slider later marks the value as explicit and takes over.
+			for (const auto& deviceId : devices)
+			{
+				PhoneAudioSession session;
+				if (!FindPhoneAudioSession(deviceId, session))
+					continue;
+				const auto adopted = static_cast<double>(std::clamp(session.Level, 0.0f, 1.0f));
+				g_playbackVolume.store(adopted);
+				g_playbackVolumeExplicit = true;
+				AppendLog(L"Adopted phone session volume: " +
+					std::to_wstring(static_cast<int>(std::lround(adopted * 100.0))) + L"%");
+				if (IsWindow(g_hWnd))
+					PostMessageW(g_hWnd, WM_VOLUME_CHANGED, 0, 0);
+				break;
+			}
+		}
+		else
+		{
+			for (const auto& deviceId : devices)
+				SetPhoneAudioSessionVolume(deviceId, volume);
+		}
 
 		std::this_thread::sleep_for(std::chrono::milliseconds(500));
 	}
@@ -611,6 +634,12 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 			if (g_shuttingDown)
 				co_return;
 
+			// Repair reconnects through the same open -> close -> reopen sequence
+			// as the first connection, otherwise the new link can stay silent.
+			{
+				std::lock_guard lock(g_connectionMutex);
+				g_primedDevices.erase(deviceId);
+			}
 			ConnectDevice(deviceId);
 
 			const auto opened = co_await WaitForDeviceConnection(
