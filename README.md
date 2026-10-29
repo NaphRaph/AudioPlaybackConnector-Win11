@@ -61,7 +61,7 @@ English, Simplified Chinese and Traditional Chinese are selected automatically f
 
 ### Connected, but there is no audio
 
-The app follows the documented Windows `StartAsync()` / `OpenAsync()` sequence and waits for the connection to reach the actual `Opened` audio state. It silences the Windows-owned playback path only after it has captured real audio to play, so a failed takeover leaves the normal path audible instead of a connected-but-silent phone. **Repair audio** remains available as a manual fallback and performs up to three progressively delayed reconnects.
+The app follows the documented Windows `StartAsync()` / `OpenAsync()` sequence and waits for the connection to reach the actual `Opened` audio state. The first connection after the app starts is primed by closing and reopening it once, because Windows can report a cold A2DP link as opened while it carries no samples. The app then silences the Windows-owned playback path only after it has captured real audio to play, so a failed takeover leaves the normal path audible instead of a connected-but-silent phone. **Repair audio** remains available as a manual fallback and performs up to three progressively delayed reconnects.
 
 ### Connection error, or still no audio after reconnecting
 

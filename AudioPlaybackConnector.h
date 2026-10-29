@@ -73,6 +73,8 @@ inline std::unordered_map<std::wstring, std::shared_ptr<PhoneAudioProcessor>> g_
 inline std::unordered_map<std::wstring, std::wstring> g_deviceErrorMessages;
 inline std::unordered_set<std::wstring> g_radioRecoveryCandidates;
 inline std::unordered_set<std::wstring> g_autoRadioRecoveryAttempted;
+// Devices whose first connection has already been primed in this process.
+inline std::unordered_set<std::wstring> g_primedDevices;
 inline std::unordered_map<std::wstring, std::wstring> g_availableDeviceNames;
 inline std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> g_lastConnectionCloseTimes;
 // One long-running operation per device. Starting a second one while the first

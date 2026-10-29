@@ -431,6 +431,27 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 	}
 	if (success && IsCurrentConnection(deviceId, generation))
 	{
+		bool priming = false;
+		{
+			std::lock_guard lock(g_connectionMutex);
+			priming = g_primedDevices.insert(deviceId).second;
+		}
+		if (priming)
+		{
+			// The first A2DP sink connection after the app starts can report
+			// Opened while carrying no samples. Reopen once, exactly like the
+			// manual Repair audio action, so the link that stays open is a
+			// freshly negotiated one.
+			AppendLog(L"Priming first connection: " + deviceId);
+			CloseCurrentConnection(deviceId, generation);
+			co_await winrt::resume_after(CONNECTION_RELEASE_COOLDOWN);
+			co_await uiContext;
+			if (g_shuttingDown)
+				co_return;
+			ConnectDevice(device);
+			co_return;
+		}
+
 		// Bluetooth is connected even if the phone is currently paused. The
 		// audio worker waits for the capture endpoint to become active.
 		try
