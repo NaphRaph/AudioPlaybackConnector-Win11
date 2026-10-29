@@ -499,13 +499,13 @@ winrt::fire_and_forget AutoConnectDevice(std::wstring deviceId)
 	auto uiContext = winrt::apartment_context();
 	{
 		std::lock_guard lock(g_connectionMutex);
-		if (!g_repairingDevices.insert(deviceId).second)
+		if (!g_deviceOperations.emplace(deviceId, DeviceOperation::Repairing).second)
 			co_return;
 	}
 	auto autoConnectGuard = wil::scope_exit([deviceId] {
 		{
 			std::lock_guard lock(g_connectionMutex);
-			g_repairingDevices.erase(deviceId);
+			g_deviceOperations.erase(deviceId);
 		}
 		QueueDeviceListRefresh();
 	});
@@ -559,12 +559,12 @@ winrt::fire_and_forget DisconnectDevice(std::wstring deviceId)
 		if (it == g_audioPlaybackConnections.end())
 			co_return;
 		generation = it->second.Generation;
-		if (!g_disconnectingDevices.insert(deviceId).second)
+		if (!g_deviceOperations.emplace(deviceId, DeviceOperation::Disconnecting).second)
 			co_return;
 	}
 	auto guard = wil::scope_exit([deviceId] {
 		std::lock_guard lock(g_connectionMutex);
-		g_disconnectingDevices.erase(deviceId);
+		g_deviceOperations.erase(deviceId);
 		QueueDeviceListRefresh();
 	});
 	co_await StopPhoneAudioAndWait(deviceId);
@@ -586,13 +586,13 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 	auto uiContext = winrt::apartment_context();
 	{
 		std::lock_guard lock(g_connectionMutex);
-		if (!g_repairingDevices.insert(deviceId).second)
+		if (!g_deviceOperations.emplace(deviceId, DeviceOperation::Repairing).second)
 			co_return;
 	}
 	auto repairGuard = wil::scope_exit([deviceId] {
 		{
 			std::lock_guard lock(g_connectionMutex);
-			g_repairingDevices.erase(deviceId);
+			g_deviceOperations.erase(deviceId);
 		}
 		QueueDeviceListRefresh();
 	});
@@ -695,13 +695,13 @@ winrt::fire_and_forget RecoverBluetoothRadio(std::wstring deviceId)
 		co_return;
 	{
 		std::lock_guard lock(g_connectionMutex);
-		g_repairingDevices.insert(deviceId);
+		g_deviceOperations.insert_or_assign(deviceId, DeviceOperation::Repairing);
 	}
 	auto guard = wil::scope_exit([deviceId] {
 		g_radioRecoveryInProgress = false;
 		{
 			std::lock_guard lock(g_connectionMutex);
-			g_repairingDevices.erase(deviceId);
+			g_deviceOperations.erase(deviceId);
 		}
 		QueueDeviceListRefresh();
 		if (g_exitPendingAfterRadioRecovery.exchange(false) && IsWindow(g_hWnd))
@@ -817,7 +817,7 @@ winrt::fire_and_forget RecoverBluetoothRadio(std::wstring deviceId)
 		std::lock_guard lock(g_connectionMutex);
 		g_deviceErrorMessages.erase(deviceId);
 		g_radioRecoveryCandidates.erase(deviceId);
-		g_repairingDevices.erase(deviceId);
+		g_deviceOperations.erase(deviceId);
 	}
 	g_radioRecoveryInProgress = false;
 	QueueDeviceListRefresh();

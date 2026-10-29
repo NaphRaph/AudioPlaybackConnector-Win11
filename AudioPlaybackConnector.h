@@ -75,8 +75,15 @@ inline std::unordered_set<std::wstring> g_radioRecoveryCandidates;
 inline std::unordered_set<std::wstring> g_autoRadioRecoveryAttempted;
 inline std::unordered_map<std::wstring, std::wstring> g_availableDeviceNames;
 inline std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> g_lastConnectionCloseTimes;
-inline std::unordered_set<std::wstring> g_repairingDevices;
-inline std::unordered_set<std::wstring> g_disconnectingDevices;
+// One long-running operation per device. Starting a second one while the first
+// is still running would fight over the same Bluetooth link.
+enum class DeviceOperation
+{
+	Repairing,
+	Disconnecting
+};
+
+inline std::unordered_map<std::wstring, DeviceOperation> g_deviceOperations;
 inline std::recursive_mutex g_connectionMutex;
 inline std::mutex g_deviceListMutex;
 inline std::mutex g_logMutex;

@@ -297,7 +297,9 @@ void AddDevicePickerRow(std::wstring const& deviceId, std::wstring const& device
 		std::lock_guard lock(g_connectionMutex);
 		auto connection = g_audioPlaybackConnections.find(deviceId);
 		connecting = connection != g_audioPlaybackConnections.end() && connection->second.Connecting;
-		repairing = g_repairingDevices.find(deviceId) != g_repairingDevices.end();
+		auto operation = g_deviceOperations.find(deviceId);
+		repairing = operation != g_deviceOperations.end() &&
+			operation->second == DeviceOperation::Repairing;
 		canRecoverRadio = g_radioRecoveryCandidates.find(deviceId) != g_radioRecoveryCandidates.end();
 		connecting = connecting || repairing;
 		// UI status is derived from the completed connection operation. Avoid
