@@ -21,9 +21,7 @@ constexpr UINT_PTR SHUTDOWN_TIMER_ID = 1;
 constexpr UINT_PTR VOLUME_SAVE_TIMER_ID = 2;
 constexpr UINT SHUTDOWN_RELEASE_DELAY_MS = 2000;
 constexpr UINT VOLUME_SAVE_DEBOUNCE_MS = 800;
-constexpr auto CONNECTION_RELEASE_COOLDOWN = std::chrono::milliseconds(2500);
-constexpr auto PRIMING_SETTLE_DELAY = std::chrono::milliseconds(350);
-constexpr auto PRIMING_RELEASE_COOLDOWN = std::chrono::milliseconds(2800);
+constexpr auto CONNECTION_RELEASE_COOLDOWN = std::chrono::milliseconds(3000);
 constexpr auto RADIO_OFF_SETTLE_DELAY = std::chrono::milliseconds(2500);
 constexpr auto RADIO_ON_SETTLE_DELAY = std::chrono::milliseconds(2000);
 constexpr auto CONNECTION_OPENED_TIMEOUT = std::chrono::seconds(5);
@@ -70,8 +68,6 @@ inline std::unordered_map<std::wstring, std::shared_ptr<PhoneAudioProcessor>> g_
 inline std::unordered_map<std::wstring, std::wstring> g_deviceErrorMessages;
 inline std::unordered_set<std::wstring> g_radioRecoveryCandidates;
 inline std::unordered_set<std::wstring> g_autoRadioRecoveryAttempted;
-// Devices whose first connection has already been primed in this connection cycle.
-inline std::unordered_set<std::wstring> g_primedDevices;
 // Devices remembered for automatic reconnect across restarts/shutdowns.
 inline std::unordered_set<std::wstring> g_rememberedDevices;
 inline std::unordered_map<std::wstring, std::wstring> g_availableDeviceNames;

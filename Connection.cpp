@@ -168,7 +168,6 @@ void HandleConnectionStateChanged(ConnectionStateChangedMessage* raw)
 		if (it != g_audioPlaybackConnections.end() && it->second.Generation == stateChanged->generation)
 		{
 			g_audioPlaybackConnections.erase(it);
-			g_primedDevices.erase(stateChanged->deviceId);
 			g_lastConnectionCloseTimes.insert_or_assign(stateChanged->deviceId, std::chrono::steady_clock::now());
 			matched = true;
 		}
@@ -424,33 +423,6 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 	}
 	if (success && IsCurrentConnection(deviceId, generation))
 	{
-		bool priming = false;
-		{
-			std::lock_guard lock(g_connectionMutex);
-			priming = g_primedDevices.insert(deviceId).second;
-		}
-		if (priming)
-		{
-			// Let AudioSrv finish registering the PnP endpoint on the first open,
-			// then close and wait the full release cooldown so the underlying
-			// AVDTP session tears down completely before reopening.
-			AppendLog(L"Priming first connection: " + deviceId);
-			co_await winrt::resume_after(PRIMING_SETTLE_DELAY);
-			co_await uiContext;
-			if (g_shuttingDown || !IsCurrentConnection(deviceId, generation))
-				co_return;
-			CloseCurrentConnection(deviceId, generation);
-			co_await winrt::resume_after(PRIMING_RELEASE_COOLDOWN);
-			co_await uiContext;
-			if (g_shuttingDown)
-				co_return;
-			ConnectDevice(device);
-			co_return;
-		}
-	}
-
-	if (success && IsCurrentConnection(deviceId, generation))
-	{
 		{
 			std::lock_guard lock(g_connectionMutex);
 			auto it = g_audioPlaybackConnections.find(deviceId);
@@ -469,6 +441,7 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 	{
 		if (generation != 0 && IsCurrentConnection(deviceId, generation))
 			CloseCurrentConnection(deviceId, generation);
+		connection = nullptr;
 
 		// A cold Windows Bluetooth stack can reject the first open with
 		// 0x8007001F / 0x8007012A until the radio is cycled. Try that once per
@@ -577,7 +550,6 @@ winrt::fire_and_forget DisconnectDevice(std::wstring deviceId)
 	{
 		std::lock_guard lock(g_connectionMutex);
 		g_deviceErrorMessages.erase(deviceId);
-		g_primedDevices.erase(deviceId);
 		g_rememberedDevices.erase(deviceId);
 	}
 	SaveSettings();
@@ -625,7 +597,6 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 			if (g_shuttingDown)
 				co_return;
 
-			bool closedExisting = false;
 			{
 				std::lock_guard lock(g_connectionMutex);
 				auto it = g_audioPlaybackConnections.find(deviceId);
@@ -634,7 +605,6 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 					it->second.Connection.Close();
 					g_audioPlaybackConnections.erase(it);
 					g_lastConnectionCloseTimes.insert_or_assign(deviceId, std::chrono::steady_clock::now());
-					closedExisting = true;
 				}
 				g_deviceErrorMessages.erase(deviceId);
 			}
@@ -649,16 +619,6 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 			if (g_shuttingDown)
 				co_return;
 
-			// When Repair just closed an active connection and waited >= 3 s, the
-			// next ConnectDevice IS the reopened connection. Marking it primed
-			// avoids immediately closing the newly repaired link a second time.
-			{
-				std::lock_guard lock(g_connectionMutex);
-				if (closedExisting)
-					g_primedDevices.insert(deviceId);
-				else
-					g_primedDevices.erase(deviceId);
-			}
 			ConnectDevice(deviceId);
 
 			const auto opened = co_await WaitForDeviceConnection(
@@ -765,7 +725,6 @@ winrt::fire_and_forget RecoverBluetoothRadio(std::wstring deviceId)
 			std::lock_guard lock(g_connectionMutex);
 			for (const auto& [id, entry] : g_audioPlaybackConnections)
 				connections.emplace_back(id, entry.Generation);
-			g_primedDevices.clear();
 		}
 		for (const auto& [id, generation] : connections)
 		{

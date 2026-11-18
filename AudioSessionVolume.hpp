@@ -201,6 +201,9 @@ inline bool SetPhoneAudioSessionVolume(std::wstring_view deviceId, float level)
 		return false;
 
 	level = std::clamp(level, 0.0f, 1.0f);
+	BOOL muted = FALSE;
+	if (SUCCEEDED(session.Volume->GetMute(&muted)) && muted && level > 0.0f)
+		session.Volume->SetMute(FALSE, nullptr);
 	if (std::abs(session.Level - level) < 0.001f)
 		return true;
 	const HRESULT result = session.Volume->SetMasterVolume(level, nullptr);
