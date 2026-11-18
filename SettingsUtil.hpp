@@ -40,6 +40,7 @@ inline void DefaultSettings()
 	g_playbackVolume = DEFAULT_PLAYBACK_VOLUME;
 	g_phoneEndpointGuids.clear();
 	g_lastDevices.clear();
+	g_rememberedDevices.clear();
 }
 
 inline void LoadSettings()
@@ -66,25 +67,35 @@ inline void LoadSettings()
 
 		std::wstring utf16 = Utf8ToUtf16(string);
 		auto jsonObj = JsonObject::Parse(utf16);
-		g_reconnect = jsonObj.Lookup(L"reconnect").GetBoolean();
-		// Version 6 stores the Windows playback session volume. Older versions
-		// used a digital gain whose 50% was the neutral point, so their value is
-		// not carried over: the app adopts the session's current volume instead,
-		// which keeps the loudness unchanged after an upgrade.
+		if (jsonObj.HasKey(L"reconnect"))
+			g_reconnect = jsonObj.Lookup(L"reconnect").GetBoolean();
+
+		// Version 6+ uses 1.0 (100%) as the phone's original loudness, and
+		// version 7 extends the range to 0.0-2.0 (0%-200%).
 		const auto volumeControlVersion = jsonObj.HasKey(L"volumeControlVersion") ?
 			static_cast<int>(jsonObj.Lookup(L"volumeControlVersion").GetNumber()) : 1;
 		if (volumeControlVersion >= 6 && jsonObj.HasKey(L"playbackVolume"))
 		{
-			g_playbackVolume = std::clamp(jsonObj.Lookup(L"playbackVolume").GetNumber(), 0.0, 1.0);
+			g_playbackVolume = std::clamp(jsonObj.Lookup(L"playbackVolume").GetNumber(), 0.0, MAX_PLAYBACK_VOLUME);
 			g_playbackVolumeExplicit = true;
 		}
 
-		auto lastDevices = jsonObj.Lookup(L"lastDevices").GetArray();
-		g_lastDevices.reserve(lastDevices.Size());
-		for (const auto& i : lastDevices)
+		if (jsonObj.HasKey(L"lastDevices"))
 		{
-			if (i.ValueType() == JsonValueType::String)
-				g_lastDevices.push_back(std::wstring(i.GetString()));
+			auto lastDevices = jsonObj.Lookup(L"lastDevices").GetArray();
+			g_lastDevices.reserve(lastDevices.Size());
+			for (const auto& i : lastDevices)
+			{
+				if (i.ValueType() == JsonValueType::String)
+				{
+					std::wstring id(i.GetString());
+					if (!id.empty())
+					{
+						g_lastDevices.push_back(id);
+						g_rememberedDevices.insert(std::move(id));
+					}
+				}
+			}
 		}
 	}
 	CATCH_LOG();
@@ -96,11 +107,10 @@ inline void SaveSettings()
 	{
 		JsonObject jsonObj;
 		jsonObj.Insert(L"reconnect", JsonValue::CreateBooleanValue(g_reconnect));
-		// Only persist the slider once its value is meaningful. Writing a
-		// placeholder would make the next launch force that level on connect.
 		if (g_playbackVolumeExplicit)
 		{
-			jsonObj.Insert(L"playbackVolume", JsonValue::CreateNumberValue(g_playbackVolume.load()));
+			jsonObj.Insert(L"playbackVolume",
+				JsonValue::CreateNumberValue(std::clamp(g_playbackVolume.load(), 0.0, MAX_PLAYBACK_VOLUME)));
 			jsonObj.Insert(L"volumeControlVersion", JsonValue::CreateNumberValue(VOLUME_CONTROL_VERSION));
 		}
 		else
@@ -111,8 +121,16 @@ inline void SaveSettings()
 		JsonArray lastDevices;
 		{
 			std::lock_guard lock(g_connectionMutex);
-			for (const auto& i : g_audioPlaybackConnections)
-				lastDevices.Append(JsonValue::CreateStringValue(i.first));
+			for (const auto& [deviceId, entry] : g_audioPlaybackConnections)
+			{
+				if (!entry.Connecting)
+					g_rememberedDevices.insert(deviceId);
+			}
+			if (g_reconnect)
+			{
+				for (const auto& deviceId : g_rememberedDevices)
+					lastDevices.Append(JsonValue::CreateStringValue(deviceId));
+			}
 		}
 		jsonObj.Insert(L"lastDevices", lastDevices);
 

@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "AudioPlaybackConnector.h"
 
-// Bluetooth connection lifecycle, audio repair and radio recovery.
+// Bluetooth connection lifecycle, audio processor orchestration, repair and radio recovery.
 
 bool IsCurrentConnection(std::wstring_view deviceId, uint64_t generation)
 {
@@ -30,6 +30,70 @@ bool IsCurrentConnectionOpened(std::wstring_view deviceId, uint64_t generation)
 		LOG_CAUGHT_EXCEPTION();
 		return false;
 	}
+}
+
+void StartPhoneAudioProcessor(std::wstring const& deviceId, uint64_t generation)
+{
+	std::shared_ptr<PhoneAudioProcessor> previous;
+	auto processor = std::make_shared<PhoneAudioProcessor>(deviceId, generation);
+	{
+		std::lock_guard lock(g_connectionMutex);
+		auto it = g_phoneAudioProcessors.find(deviceId);
+		if (it != g_phoneAudioProcessors.end())
+		{
+			previous = std::move(it->second);
+			it->second = processor;
+		}
+		else
+		{
+			g_phoneAudioProcessors.emplace(deviceId, processor);
+		}
+	}
+	if (previous)
+	{
+		previous->Stop();
+		previous->WaitStopped();
+	}
+	processor->Start();
+}
+
+void StopPhoneAudioProcessor(std::wstring_view deviceId)
+{
+	std::shared_ptr<PhoneAudioProcessor> processor;
+	{
+		std::lock_guard lock(g_connectionMutex);
+		auto it = g_phoneAudioProcessors.find(std::wstring(deviceId));
+		if (it != g_phoneAudioProcessors.end())
+		{
+			processor = std::move(it->second);
+			g_phoneAudioProcessors.erase(it);
+		}
+	}
+	if (processor)
+	{
+		processor->Stop();
+		processor->WaitStopped();
+	}
+}
+
+void StopAllPhoneAudioProcessors()
+{
+	std::vector<std::shared_ptr<PhoneAudioProcessor>> processors;
+	{
+		std::lock_guard lock(g_connectionMutex);
+		processors.reserve(g_phoneAudioProcessors.size());
+		for (auto& [_, processor] : g_phoneAudioProcessors)
+		{
+			if (processor)
+			{
+				processor->Stop();
+				processors.push_back(std::move(processor));
+			}
+		}
+		g_phoneAudioProcessors.clear();
+	}
+	for (const auto& processor : processors)
+		processor->WaitStopped();
 }
 
 winrt::Windows::Foundation::IAsyncOperation<bool> WaitForDeviceConnection(
@@ -73,92 +137,13 @@ void QueueConnectionStateChanged(std::wstring deviceId, uint64_t generation)
 		message.release();
 }
 
-namespace
-{
-	std::thread g_volumeApplierThread;
-	std::atomic_bool g_volumeApplierStop = false;
-}
-
-// The slider controls the Windows playback session that carries each phone's
-// audio. A periodic write fights Windows/AVRCP and makes the level oscillate, so
-// the worker only writes when the user moved the slider or when Windows
-// recreated the session, and otherwise follows the session level.
-void RunPhoneVolumeApplier()
-{
-	std::unordered_map<std::wstring, std::wstring> sessionInstances;
-	while (!g_volumeApplierStop && !g_shuttingDown)
-	{
-		std::vector<std::wstring> devices;
-		{
-			std::lock_guard lock(g_connectionMutex);
-			for (const auto& [deviceId, entry] : g_audioPlaybackConnections)
-			{
-				if (!entry.Connecting)
-					devices.push_back(deviceId);
-			}
-		}
-
-		const bool pending = g_volumeApplyPending.load();
-		const bool explicitVolume = g_playbackVolumeExplicit.load();
-		bool applied = false;
-		for (const auto& deviceId : devices)
-		{
-			PhoneAudioSession session;
-			if (!FindPhoneAudioSession(deviceId, session))
-				continue;
-
-			auto [instance, inserted] = sessionInstances.try_emplace(deviceId, session.InstanceId);
-			const bool recreated = !inserted && instance->second != session.InstanceId;
-			if (recreated)
-				instance->second = session.InstanceId;
-
-			if (explicitVolume)
-			{
-				// The user chose this level. Apply it when the session first
-				// appears and whenever Windows recreates it, but never on a poll.
-				if (pending || inserted || recreated)
-				{
-					SetPhoneAudioSessionVolume(deviceId,
-						static_cast<float>(g_playbackVolume.load()));
-					applied = true;
-				}
-				continue;
-			}
-
-			// No user choice yet: follow the session level instead of forcing one.
-			const auto current = static_cast<double>(session.Level);
-			if (std::abs(current - g_playbackVolume.load()) < 0.005)
-				continue;
-			g_playbackVolume.store(current);
-			AppendLog(L"Adopted phone session volume: " +
-				std::to_wstring(static_cast<int>(std::lround(current * 100.0))) + L"%");
-			if (IsWindow(g_hWnd))
-				PostMessageW(g_hWnd, WM_VOLUME_CHANGED, 0, 0);
-		}
-		if (pending && applied)
-			g_volumeApplyPending = false;
-
-		std::this_thread::sleep_for(std::chrono::milliseconds(500));
-	}
-}
-
-void StartPhoneVolumeApplier()
-{
-	if (g_volumeApplierThread.joinable())
-		return;
-	g_volumeApplierStop = false;
-	g_volumeApplierThread = std::thread(RunPhoneVolumeApplier);
-}
-
-void StopPhoneVolumeApplier()
-{
-	g_volumeApplierStop = true;
-	if (g_volumeApplierThread.joinable())
-		g_volumeApplierThread.join();
-}
-
 void CloseCurrentConnection(std::wstring_view deviceId, uint64_t generation)
 {
+	if (!IsCurrentConnection(deviceId, generation))
+		return;
+
+	StopPhoneAudioProcessor(deviceId);
+
 	std::lock_guard lock(g_connectionMutex);
 	auto it = g_audioPlaybackConnections.find(std::wstring(deviceId));
 	if (it == g_audioPlaybackConnections.end() || it->second.Generation != generation)
@@ -176,14 +161,36 @@ void HandleConnectionStateChanged(ConnectionStateChangedMessage* raw)
 	if (!stateChanged || g_shuttingDown)
 		return;
 
-	std::lock_guard lock(g_connectionMutex);
-	auto it = g_audioPlaybackConnections.find(stateChanged->deviceId);
-	if (it == g_audioPlaybackConnections.end() || it->second.Generation != stateChanged->generation)
+	bool matched = false;
+	{
+		std::lock_guard lock(g_connectionMutex);
+		auto it = g_audioPlaybackConnections.find(stateChanged->deviceId);
+		if (it != g_audioPlaybackConnections.end() && it->second.Generation == stateChanged->generation)
+		{
+			g_audioPlaybackConnections.erase(it);
+			g_primedDevices.erase(stateChanged->deviceId);
+			g_lastConnectionCloseTimes.insert_or_assign(stateChanged->deviceId, std::chrono::steady_clock::now());
+			matched = true;
+		}
+	}
+	if (!matched)
 		return;
-	g_audioPlaybackConnections.erase(it);
-	g_lastConnectionCloseTimes.insert_or_assign(stateChanged->deviceId, std::chrono::steady_clock::now());
+
+	StopPhoneAudioProcessor(stateChanged->deviceId);
 	AppendLog(L"Bluetooth audio connection closed: " + stateChanged->deviceId);
 	QueueDeviceListRefresh();
+}
+
+void HandleAutoAudioRepair(ConnectionStateChangedMessage* raw)
+{
+	std::unique_ptr<ConnectionStateChangedMessage> message(raw);
+	if (!message || g_shuttingDown || g_radioRecoveryInProgress)
+		return;
+
+	if (!IsCurrentConnection(message->deviceId, message->generation))
+		return;
+
+	RepairDeviceAudio(message->deviceId);
 }
 
 winrt::fire_and_forget ConnectDevice(std::wstring deviceId)
@@ -337,8 +344,7 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 				co_return;
 
 			// Open immediately after StartAsync, as required by the documented
-			// AudioPlaybackConnection lifecycle. An arbitrary delay here can leave
-			// an already-playing source waiting on a half-open A2DP transport.
+			// AudioPlaybackConnection lifecycle.
 			connectionStage = L"OpenAsync";
 			AppendLog(L"Connection OpenAsync: " + deviceId);
 			auto result = co_await connection.OpenAsync();
@@ -353,10 +359,6 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			{
 			case AudioPlaybackConnectionOpenResultStatus::Success:
 			{
-				// OpenAsync success only means Windows accepted the request. On the
-				// affected vivo/Windows combination it can return before the A2DP
-				// transport reaches Opened, which previously produced a false
-				// "Connected" row with no sound. Wait for the actual audio state.
 				const auto stateDeadline =
 					std::chrono::steady_clock::now() + CONNECTION_OPENED_TIMEOUT;
 				while (!g_shuttingDown && IsCurrentConnection(deviceId, generation) &&
@@ -441,20 +443,22 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 		}
 		if (priming)
 		{
-			// The first A2DP sink connection after the app starts can report
-			// Opened while carrying no samples. Reopen once, exactly like the
-			// manual Repair audio action, so the link that stays open is a
-			// freshly negotiated one.
+			// Let AudioSrv finish registering the PnP endpoint on the first open,
+			// then close and wait the full release cooldown so the underlying
+			// AVDTP session tears down completely before reopening.
 			AppendLog(L"Priming first connection: " + deviceId);
+			co_await winrt::resume_after(PRIMING_SETTLE_DELAY);
+			co_await uiContext;
+			if (g_shuttingDown || !IsCurrentConnection(deviceId, generation))
+				co_return;
 			CloseCurrentConnection(deviceId, generation);
-			co_await winrt::resume_after(CONNECTION_RELEASE_COOLDOWN);
+			co_await winrt::resume_after(PRIMING_RELEASE_COOLDOWN);
 			co_await uiContext;
 			if (g_shuttingDown)
 				co_return;
 			ConnectDevice(device);
 			co_return;
 		}
-
 	}
 
 	if (success && IsCurrentConnection(deviceId, generation))
@@ -467,8 +471,11 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			it->second.Connecting = false;
 			g_deviceErrorMessages.erase(deviceId);
 			g_autoRadioRecoveryAttempted.erase(deviceId);
+			g_rememberedDevices.insert(deviceId);
 		}
 		AppendLog(L"Connection opened: " + deviceId);
+		StartPhoneAudioProcessor(deviceId, generation);
+		SaveSettings();
 	}
 	else if (!g_shuttingDown)
 	{
@@ -476,8 +483,8 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			CloseCurrentConnection(deviceId, generation);
 
 		// A cold Windows Bluetooth stack can reject the first open with
-		// 0x8007001F until the radio is cycled. Try that once per device and
-		// only fall back to the visible error when the recovery did not help.
+		// 0x8007001F / 0x8007012A until the radio is cycled. Try that once per
+		// device and only fall back to the visible error when recovery did not help.
 		bool startRadioRecovery = false;
 		{
 			std::lock_guard lock(g_connectionMutex);
@@ -492,7 +499,7 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 			(errorMessage.empty() ? std::wstring(L"Unknown error") : errorMessage));
 		if (startRadioRecovery)
 		{
-			AppendLog(L"Automatic Bluetooth radio recovery after 0x8007001F: " + deviceId);
+			AppendLog(L"Automatic Bluetooth radio recovery after error: " + deviceId);
 			RecoverBluetoothRadio(deviceId);
 			co_return;
 		}
@@ -531,8 +538,6 @@ winrt::fire_and_forget AutoConnectDevice(std::wstring deviceId)
 		if (g_shuttingDown || g_radioRecoveryInProgress)
 			co_return;
 
-		// Keep the first opened connection. The audio worker waits for playback
-		// if the phone has not yet activated its capture endpoint.
 		ConnectDevice(deviceId);
 		const auto connected = co_await WaitForDeviceConnection(
 			deviceId, std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -576,6 +581,7 @@ winrt::fire_and_forget DisconnectDevice(std::wstring deviceId)
 		g_deviceOperations.erase(deviceId);
 		QueueDeviceListRefresh();
 	});
+	co_await winrt::resume_after(std::chrono::milliseconds(10));
 	co_await uiContext;
 	if (g_shuttingDown)
 		co_return;
@@ -583,7 +589,11 @@ winrt::fire_and_forget DisconnectDevice(std::wstring deviceId)
 	{
 		std::lock_guard lock(g_connectionMutex);
 		g_deviceErrorMessages.erase(deviceId);
+		g_primedDevices.erase(deviceId);
+		g_autoStreamRepairAttempted.erase(deviceId);
+		g_rememberedDevices.erase(deviceId);
 	}
+	SaveSettings();
 	QueueDeviceListRefresh();
 }
 
@@ -608,8 +618,6 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 	AppendLog(L"Audio repair requested: " + deviceId);
 	QueueDeviceListRefresh();
 
-	// Retry with bounded release delays while Bluetooth cannot open. Keep the
-	// first opened connection; its worker waits if the phone is paused.
 	constexpr std::chrono::milliseconds releaseDelays[AUDIO_REPAIR_MAX_ATTEMPTS] = {
 		std::chrono::seconds(3), std::chrono::seconds(5), std::chrono::seconds(8)
 	};
@@ -624,9 +632,13 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 				AppendLog(L"Audio repair deferred while connection is still opening: " + deviceId);
 				co_return;
 			}
+
+			StopPhoneAudioProcessor(deviceId);
 			co_await uiContext;
 			if (g_shuttingDown)
 				co_return;
+
+			bool closedExisting = false;
 			{
 				std::lock_guard lock(g_connectionMutex);
 				auto it = g_audioPlaybackConnections.find(deviceId);
@@ -635,6 +647,7 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 					it->second.Connection.Close();
 					g_audioPlaybackConnections.erase(it);
 					g_lastConnectionCloseTimes.insert_or_assign(deviceId, std::chrono::steady_clock::now());
+					closedExisting = true;
 				}
 				g_deviceErrorMessages.erase(deviceId);
 			}
@@ -649,11 +662,15 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 			if (g_shuttingDown)
 				co_return;
 
-			// Repair reconnects through the same open -> close -> reopen sequence
-			// as the first connection, otherwise the new link can stay silent.
+			// When Repair just closed an active connection and waited >= 3 s, the
+			// next ConnectDevice IS the reopened connection. Marking it primed
+			// avoids immediately closing the newly repaired link a second time.
 			{
 				std::lock_guard lock(g_connectionMutex);
-				g_primedDevices.erase(deviceId);
+				if (closedExisting)
+					g_primedDevices.insert(deviceId);
+				else
+					g_primedDevices.erase(deviceId);
 			}
 			ConnectDevice(deviceId);
 
@@ -720,7 +737,10 @@ winrt::fire_and_forget RecoverBluetoothRadio(std::wstring deviceId)
 			PostMessageW(g_hWnd, WM_CLOSE, 0, 0);
 	});
 	QueueDeviceListRefresh();
-	AppendLog(L"User-confirmed Bluetooth radio recovery started: " + deviceId);
+	AppendLog(L"Bluetooth radio recovery started: " + deviceId);
+
+	// Ensure USB selective suspend / power saving is disabled before cycling the radio.
+	EnsureBluetoothSystemGuardAsync();
 
 	Radio radio = nullptr;
 	bool offRequested = false;
@@ -737,8 +757,8 @@ winrt::fire_and_forget RecoverBluetoothRadio(std::wstring deviceId)
 			}
 		}
 		co_await uiContext;
-		if (!radio || radio.State() != RadioState::On)
-			throw winrt::hresult_error(E_FAIL, L"Bluetooth radio is unavailable or not on");
+		if (!radio)
+			throw winrt::hresult_error(E_FAIL, L"Bluetooth radio is unavailable");
 
 		const auto access = co_await Radio::RequestAccessAsync();
 		co_await uiContext;
@@ -750,13 +770,15 @@ winrt::fire_and_forget RecoverBluetoothRadio(std::wstring deviceId)
 		if (g_shuttingDown)
 			co_return;
 
-		// The radio reset affects every Bluetooth link. Release our own audio
-		// connections first; never close a connection while its worker is active.
+		// Release all audio processors and connections before cycling the radio.
+		StopAllPhoneAudioProcessors();
+
 		std::vector<std::pair<std::wstring, uint64_t>> connections;
 		{
 			std::lock_guard lock(g_connectionMutex);
 			for (const auto& [id, entry] : g_audioPlaybackConnections)
 				connections.emplace_back(id, entry.Generation);
+			g_primedDevices.clear();
 		}
 		for (const auto& [id, generation] : connections)
 		{
@@ -766,18 +788,34 @@ winrt::fire_and_forget RecoverBluetoothRadio(std::wstring deviceId)
 			CloseCurrentConnection(id, generation);
 		}
 
-		offRequested = true;
-		AppendLog(L"Requesting Bluetooth radio off");
-		if ((co_await radio.SetStateAsync(RadioState::Off)) != RadioAccessStatus::Allowed)
-			throw winrt::hresult_error(E_ACCESSDENIED, L"Windows rejected Bluetooth radio off");
-		observedOff = co_await WaitForRadioState(radio, RadioState::Off, std::chrono::seconds(10));
-		if (!observedOff)
-			throw winrt::hresult_error(E_FAIL, L"Bluetooth radio did not turn off");
+		if (radio.State() == RadioState::On)
+		{
+			offRequested = true;
+			AppendLog(L"Requesting Bluetooth radio off");
+			if ((co_await radio.SetStateAsync(RadioState::Off)) != RadioAccessStatus::Allowed)
+				throw winrt::hresult_error(E_ACCESSDENIED, L"Windows rejected Bluetooth radio off");
+			observedOff = co_await WaitForRadioState(radio, RadioState::Off, std::chrono::seconds(10));
+			if (!observedOff)
+				throw winrt::hresult_error(E_FAIL, L"Bluetooth radio did not turn off");
 
-		AppendLog(L"Requesting Bluetooth radio on");
-		if ((co_await radio.SetStateAsync(RadioState::On)) != RadioAccessStatus::Allowed)
-			throw winrt::hresult_error(E_ACCESSDENIED, L"Windows rejected Bluetooth radio on");
-		observedOn = co_await WaitForRadioState(radio, RadioState::On, std::chrono::seconds(15));
+			// Wait for the USB Bluetooth driver to finish tearing down before
+			// requesting On; calling SetStateAsync(On) at 0 ms causes Realtek
+			// drivers to reject the transition and stay off.
+			co_await winrt::resume_after(RADIO_OFF_SETTLE_DELAY);
+		}
+		else
+		{
+			observedOff = true;
+		}
+
+		for (int onAttempt = 0; onAttempt < 3 && !observedOn && !g_shuttingDown; ++onAttempt)
+		{
+			if (onAttempt > 0)
+				co_await winrt::resume_after(std::chrono::seconds(2));
+			AppendLog(L"Requesting Bluetooth radio on (attempt " + std::to_wstring(onAttempt + 1) + L")");
+			if ((co_await radio.SetStateAsync(RadioState::On)) == RadioAccessStatus::Allowed)
+				observedOn = co_await WaitForRadioState(radio, RadioState::On, std::chrono::seconds(15));
+		}
 		if (!observedOn)
 			throw winrt::hresult_error(E_FAIL, L"Bluetooth radio did not turn on");
 	}
@@ -787,12 +825,11 @@ winrt::fire_and_forget RecoverBluetoothRadio(std::wstring deviceId)
 		LOG_CAUGHT_EXCEPTION();
 	}
 
-	// If the radio was switched off but the normal on step failed, make one
-	// best-effort request to restore it before asking for manual intervention.
 	if (offRequested && !observedOn && radio)
 	{
 		try
 		{
+			co_await winrt::resume_after(std::chrono::seconds(2));
 			AppendLog(L"Attempting to restore Bluetooth radio on");
 			if ((co_await radio.SetStateAsync(RadioState::On)) == RadioAccessStatus::Allowed)
 				observedOn = co_await WaitForRadioState(radio, RadioState::On, std::chrono::seconds(15));
@@ -802,36 +839,34 @@ winrt::fire_and_forget RecoverBluetoothRadio(std::wstring deviceId)
 			LOG_CAUGHT_EXCEPTION();
 		}
 	}
+
 	co_await uiContext;
 	if (g_shuttingDown)
 		co_return;
+
 	if (!CanReconnectAfterRadioCycle(observedOff, observedOn))
 	{
 		{
 			std::lock_guard lock(g_connectionMutex);
 			g_deviceErrorMessages[deviceId] = _(L"Bluetooth recovery was not completed");
+			g_radioRecoveryCandidates.insert(deviceId);
 		}
 		AppendLog(L"Bluetooth radio recovery incomplete; opening Windows settings: " + deviceId);
+		QueueDeviceListRefresh();
 		MessageBoxW(g_hWnd,
 			_(L"Windows could not restart Bluetooth. Open Bluetooth Settings to switch it off and on manually, then reconnect the phone."),
-			_(L"Bluetooth recovery was not completed"), MB_OK | MB_ICONWARNING | MB_TOPMOST);
+			_(L"Restart Bluetooth"), MB_OK | MB_ICONWARNING | MB_TOPMOST);
 		winrt::Windows::System::Launcher::LaunchUriAsync(Uri(L"ms-settings:bluetooth"));
 		co_return;
 	}
 
-	AppendLog(L"Bluetooth radio cycled; reconnecting phone: " + deviceId);
-	co_await winrt::resume_after(std::chrono::seconds(2));
+	AppendLog(L"Bluetooth radio recovery succeeded; waiting for services before reconnecting: " + deviceId);
+	co_await winrt::resume_after(RADIO_ON_SETTLE_DELAY);
 	co_await uiContext;
 	if (g_shuttingDown)
 		co_return;
-	{
-		std::lock_guard lock(g_connectionMutex);
-		g_deviceErrorMessages.erase(deviceId);
-		g_radioRecoveryCandidates.erase(deviceId);
-		g_deviceOperations.erase(deviceId);
-	}
-	g_radioRecoveryInProgress = false;
-	QueueDeviceListRefresh();
 	ConnectDevice(deviceId);
+	co_await WaitForDeviceConnection(
+		deviceId, std::chrono::duration_cast<std::chrono::milliseconds>(
+			AUDIO_REPAIR_CONNECTION_TIMEOUT));
 }
-

@@ -4,7 +4,7 @@
 
 constexpr bool IsRadioRecoveryCandidate(uint32_t errorCode) noexcept
 {
-	return errorCode == 0x8007001Fu;
+	return errorCode == 0x8007001Fu || errorCode == 0x8007012Au;
 }
 
 constexpr bool CanReconnectAfterRadioCycle(bool observedOff, bool observedOn) noexcept

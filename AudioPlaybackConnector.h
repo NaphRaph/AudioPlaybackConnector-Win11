@@ -17,9 +17,16 @@ constexpr UINT WM_CONNECTDEVICE = WM_APP + 2;
 constexpr UINT WM_CONNECTION_STATE_CHANGED = WM_APP + 3;
 constexpr UINT WM_DEVICE_LIST_CHANGED = WM_APP + 4;
 constexpr UINT WM_VOLUME_CHANGED = WM_APP + 5;
+constexpr UINT WM_AUTO_REPAIR_AUDIO = WM_APP + 6;
 constexpr UINT_PTR SHUTDOWN_TIMER_ID = 1;
+constexpr UINT_PTR VOLUME_SAVE_TIMER_ID = 2;
 constexpr UINT SHUTDOWN_RELEASE_DELAY_MS = 2000;
-constexpr auto CONNECTION_RELEASE_COOLDOWN = std::chrono::milliseconds(1500);
+constexpr UINT VOLUME_SAVE_DEBOUNCE_MS = 800;
+constexpr auto CONNECTION_RELEASE_COOLDOWN = std::chrono::milliseconds(2500);
+constexpr auto PRIMING_SETTLE_DELAY = std::chrono::milliseconds(350);
+constexpr auto PRIMING_RELEASE_COOLDOWN = std::chrono::milliseconds(2800);
+constexpr auto RADIO_OFF_SETTLE_DELAY = std::chrono::milliseconds(2500);
+constexpr auto RADIO_ON_SETTLE_DELAY = std::chrono::milliseconds(2000);
 constexpr auto CONNECTION_OPENED_TIMEOUT = std::chrono::seconds(5);
 constexpr auto AUTO_CONNECT_STARTUP_DELAY = std::chrono::seconds(3);
 constexpr int AUDIO_REPAIR_MAX_ATTEMPTS = 3;
@@ -29,7 +36,9 @@ constexpr int AUDIO_REPAIR_MAX_ATTEMPTS = 3;
 constexpr auto AUDIO_REPAIR_CONNECTION_TIMEOUT = std::chrono::seconds(25);
 constexpr auto AUDIO_REPAIR_POLL_INTERVAL = std::chrono::milliseconds(250);
 constexpr double DEFAULT_PLAYBACK_VOLUME = 1.0;
-constexpr int VOLUME_CONTROL_VERSION = 6;
+constexpr int VOLUME_CONTROL_VERSION = 7;
+
+class PhoneAudioProcessor;
 
 struct ConnectionStateChangedMessage
 {
@@ -58,11 +67,15 @@ inline MenuFlyout g_xamlMenu = nullptr;
 inline FocusState g_menuFocusState = FocusState::Unfocused;
 inline DeviceWatcher g_deviceWatcher = nullptr;
 inline std::unordered_map<std::wstring, AudioPlaybackConnectionEntry> g_audioPlaybackConnections;
+inline std::unordered_map<std::wstring, std::shared_ptr<PhoneAudioProcessor>> g_phoneAudioProcessors;
 inline std::unordered_map<std::wstring, std::wstring> g_deviceErrorMessages;
 inline std::unordered_set<std::wstring> g_radioRecoveryCandidates;
 inline std::unordered_set<std::wstring> g_autoRadioRecoveryAttempted;
-// Devices whose first connection has already been primed in this process.
+inline std::unordered_set<std::wstring> g_autoStreamRepairAttempted;
+// Devices whose first connection has already been primed in this connection cycle.
 inline std::unordered_set<std::wstring> g_primedDevices;
+// Devices remembered for automatic reconnect across restarts/shutdowns.
+inline std::unordered_set<std::wstring> g_rememberedDevices;
 inline std::unordered_map<std::wstring, std::wstring> g_availableDeviceNames;
 inline std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> g_lastConnectionCloseTimes;
 // One long-running operation per device. Starting a second one while the first
@@ -96,15 +109,17 @@ inline std::atomic<double> g_playbackVolume = DEFAULT_PLAYBACK_VOLUME;
 // false, the app adopts the phone session's current volume instead of changing
 // it, so connecting never alters the loudness by itself.
 inline std::atomic_bool g_playbackVolumeExplicit = false;
-// Set when the user moves the slider; the volume worker applies it once and
-// then follows the session again instead of writing on every poll.
+// Set when the user moves the slider; the audio worker applies it immediately.
 inline std::atomic_bool g_volumeApplyPending = false;
+inline std::atomic_bool g_updatingVolumeSlider = false;
 inline Slider g_volumeSlider = nullptr;
+inline TextBlock g_volumeValueText = nullptr;
 inline std::unordered_map<std::wstring, std::wstring> g_phoneEndpointGuids;
 inline std::vector<std::wstring> g_lastDevices;
 inline uint64_t g_nextConnectionGeneration = 0;
 inline std::atomic_uint64_t g_deviceWatcherGeneration = 0;
 inline std::atomic_bool g_deviceEnumerationCompleted = false;
+inline std::atomic_bool g_autoConnectTriggeredOnEnum = false;
 inline std::atomic_bool g_devicePickerVisible = false;
 inline std::atomic_bool g_shuttingDown = false;
 inline std::atomic_bool g_radioRecoveryInProgress = false;
@@ -125,18 +140,21 @@ void RefreshDevicePicker();
 
 // Connection.cpp
 void HandleConnectionStateChanged(ConnectionStateChangedMessage* message);
+void HandleAutoAudioRepair(ConnectionStateChangedMessage* message);
 winrt::fire_and_forget ConnectDevice(std::wstring deviceId);
 winrt::fire_and_forget ConnectDevice(DeviceInformation device);
 winrt::fire_and_forget AutoConnectDevice(std::wstring deviceId);
 winrt::fire_and_forget DisconnectDevice(std::wstring deviceId);
 winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId);
 winrt::fire_and_forget RecoverBluetoothRadio(std::wstring deviceId);
-void StartPhoneVolumeApplier();
-void StopPhoneVolumeApplier();
+void StopAllPhoneAudioProcessors();
 
 #include "Util.hpp"
 #include "Logging.hpp"
 #include "I18n.hpp"
+#include "PhoneAudioGain.hpp"
 #include "SettingsUtil.hpp"
 #include "AudioSessionVolume.hpp"
+#include "PhoneAudioProcessor.hpp"
+#include "BluetoothGuardian.hpp"
 #include "Direct2DSvg.hpp"

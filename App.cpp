@@ -15,10 +15,25 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	_In_ int       nCmdShow)
 {
 	UNREFERENCED_PARAMETER(hPrevInstance);
-	UNREFERENCED_PARAMETER(lpCmdLine);
 	UNREFERENCED_PARAMETER(nCmdShow);
 
 	g_hInst = hInstance;
+
+	if (lpCmdLine)
+	{
+		const std::wstring_view cmd(lpCmdLine);
+		if (cmd.find(L"--install-guard") != std::wstring_view::npos)
+		{
+			ApplyBluetoothSystemGuard(true);
+			return EXIT_SUCCESS;
+		}
+		if (cmd.find(L"--guard") != std::wstring_view::npos)
+		{
+			ApplyBluetoothSystemGuard(false);
+			return EXIT_SUCCESS;
+		}
+	}
+
 	SetLastError(ERROR_SUCCESS);
 	auto singleInstanceMutex = CreateMutexW(nullptr, FALSE,
 		L"Local\\AudioPlaybackConnector.SingleInstance.2DAAABDD-2402-4023-BC3E-B6E93FAD567B");
@@ -33,6 +48,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	LoadSettings();
 	LoadTranslateData();
 	AppendLog(L"Application started");
+	EnsureBluetoothSystemGuardAsync();
 
 	bool supported = false;
 	try
@@ -87,7 +103,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	g_nid.hWnd = g_niid.hWnd = g_hWnd;
 	wcscpy_s(g_nid.szTip, _(L"AudioPlaybackConnector"));
 	UpdateNotifyIcon();
-	StartPhoneVolumeApplier();
 
 	WM_TASKBAR_CREATED = RegisterWindowMessageW(L"TaskbarCreated");
 	LOG_LAST_ERROR_IF(WM_TASKBAR_CREATED == 0);
@@ -113,6 +128,24 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	switch (message)
 	{
+	case WM_QUERYENDSESSION:
+		SaveSettings();
+		return TRUE;
+	case WM_ENDSESSION:
+		if (wParam)
+		{
+			g_shuttingDown = true;
+			AppendLog(L"Windows session ending; saving settings and releasing connections");
+			SaveSettings();
+			StopAllPhoneAudioProcessors();
+			{
+				std::lock_guard lock(g_connectionMutex);
+				for (const auto& connection : g_audioPlaybackConnections)
+					connection.second.Connection.Close();
+				g_audioPlaybackConnections.clear();
+			}
+		}
+		return 0;
 	case WM_CLOSE:
 	{
 		if (g_radioRecoveryInProgress)
@@ -124,6 +157,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (g_shuttingDown.exchange(true))
 			break;
 		AppendLog(L"Application shutdown requested");
+
+		KillTimer(hWnd, VOLUME_SAVE_TIMER_ID);
 
 		if (g_deviceWatcher)
 		{
@@ -138,12 +173,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			g_deviceWatcher = nullptr;
 		}
 
-		// Preserve the connected device IDs before releasing the connections only
-		// when automatic reconnect was requested. Otherwise save an empty list.
-		if (g_reconnect)
-			SaveSettings();
+		// Save settings before releasing connections so remembered devices are preserved.
+		SaveSettings();
 
-		StopPhoneVolumeApplier();
+		StopAllPhoneAudioProcessors();
 		bool releasedConnections = false;
 		{
 			std::lock_guard lock(g_connectionMutex);
@@ -154,9 +187,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			g_deviceErrorMessages.clear();
 			g_radioRecoveryCandidates.clear();
 		}
-
-		if (!g_reconnect)
-			SaveSettings();
 
 		// AudioPlaybackConnection releases the underlying Bluetooth transport
 		// asynchronously. Keep the process alive briefly after dropping the final
@@ -175,11 +205,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			KillTimer(hWnd, SHUTDOWN_TIMER_ID);
 			DestroyWindow(hWnd);
 		}
+		else if (wParam == VOLUME_SAVE_TIMER_ID)
+		{
+			KillTimer(hWnd, VOLUME_SAVE_TIMER_ID);
+			SaveSettings();
+		}
 		break;
 	case WM_DESTROY:
 		g_shuttingDown = true;
 		AppendLog(L"Application stopped");
-		StopPhoneVolumeApplier();
+		StopAllPhoneAudioProcessors();
 		{
 			std::lock_guard lock(g_connectionMutex);
 			for (const auto& connection : g_audioPlaybackConnections)
@@ -260,21 +295,37 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_CONNECTION_STATE_CHANGED:
 		HandleConnectionStateChanged(reinterpret_cast<ConnectionStateChangedMessage*>(lParam));
 		break;
-	case WM_VOLUME_CHANGED:
-		if (g_volumeSlider)
-			g_volumeSlider.Value(g_playbackVolume.load() * 100.0);
+	case WM_AUTO_REPAIR_AUDIO:
+		HandleAutoAudioRepair(reinterpret_cast<ConnectionStateChangedMessage*>(lParam));
 		break;
+	case WM_VOLUME_CHANGED:
+	{
+		g_updatingVolumeSlider = true;
+		const auto percent = std::clamp(g_playbackVolume.load() * 100.0, 0.0, 200.0);
+		if (g_volumeSlider)
+			g_volumeSlider.Value(percent);
+		if (g_volumeValueText)
+			g_volumeValueText.Text(std::to_wstring(static_cast<int>(std::lround(percent))) + L"%");
+		g_updatingVolumeSlider = false;
+		SaveSettings();
+		break;
+	}
 	case WM_DEVICE_LIST_CHANGED:
 		RefreshDevicePicker();
 		break;
 	case WM_CONNECTDEVICE:
 		if (g_reconnect)
 		{
-			for (const auto& i : g_lastDevices)
+			std::vector<std::wstring> devicesToConnect;
+			{
+				std::lock_guard lock(g_connectionMutex);
+				devicesToConnect = std::move(g_lastDevices);
+				g_lastDevices.clear();
+			}
+			for (const auto& i : devicesToConnect)
 			{
 				AutoConnectDevice(i);
 			}
-			g_lastDevices.clear();
 		}
 		break;
 	default:

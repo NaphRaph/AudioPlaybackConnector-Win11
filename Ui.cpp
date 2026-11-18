@@ -538,6 +538,33 @@ void SetupDevicePicker()
 			g_deviceEnumerationCompleted = true;
 			if (g_devicePickerVisible && IsWindow(g_hWnd))
 				PostMessageW(g_hWnd, WM_DEVICE_LIST_CHANGED, 0, 0);
+
+			if (g_reconnect && !g_autoConnectTriggeredOnEnum.exchange(true))
+			{
+				bool hasRemembered = false;
+				{
+					std::lock_guard lock(g_connectionMutex);
+					hasRemembered = !g_rememberedDevices.empty();
+				}
+				if (!hasRemembered && IsWindow(g_hWnd))
+				{
+					std::wstring singleDeviceId;
+					{
+						std::lock_guard lock(g_deviceListMutex);
+						if (g_availableDeviceNames.size() == 1)
+							singleDeviceId = g_availableDeviceNames.begin()->first;
+					}
+					if (!singleDeviceId.empty())
+					{
+						{
+							std::lock_guard lock(g_connectionMutex);
+							g_lastDevices.push_back(singleDeviceId);
+							g_rememberedDevices.insert(singleDeviceId);
+						}
+						PostMessageW(g_hWnd, WM_CONNECTDEVICE, 0, 0);
+					}
+				}
+			}
 		});
 		g_deviceWatcher.Start();
 	}
@@ -607,9 +634,9 @@ void SetupDevicePicker()
 
 	Slider volumeSlider;
 	volumeSlider.Minimum(0);
-	volumeSlider.Maximum(100);
+	volumeSlider.Maximum(200);
 	volumeSlider.StepFrequency(1);
-	volumeSlider.Value(g_playbackVolume.load() * 100.0);
+	volumeSlider.Value(std::clamp(g_playbackVolume.load() * 100.0, 0.0, 200.0));
 	volumeSlider.VerticalAlignment(VerticalAlignment::Center);
 	Grid::SetColumn(volumeSlider, 1);
 	volumeRow.Children().Append(volumeSlider);
@@ -623,13 +650,18 @@ void SetupDevicePicker()
 	volumeValue.Foreground(secondaryTextBrush);
 	Grid::SetColumn(volumeValue, 2);
 	volumeRow.Children().Append(volumeValue);
+	g_volumeValueText = volumeValue;
 
 	volumeSlider.ValueChanged([volumeValue](const auto& sender, const auto&) {
 		const auto value = sender.as<Slider>().Value();
-		g_playbackVolume.store(std::clamp(value / 100.0, 0.0, 1.0));
+		volumeValue.Text(std::to_wstring(static_cast<int>(std::lround(value))) + L"%");
+		if (g_updatingVolumeSlider.load())
+			return;
+		g_playbackVolume.store(std::clamp(value / 100.0, 0.0, MAX_PLAYBACK_VOLUME));
 		g_playbackVolumeExplicit = true;
 		g_volumeApplyPending = true;
-		volumeValue.Text(std::to_wstring(static_cast<int>(std::lround(value))) + L"%");
+		if (IsWindow(g_hWnd))
+			SetTimer(g_hWnd, VOLUME_SAVE_TIMER_ID, VOLUME_SAVE_DEBOUNCE_MS, nullptr);
 	});
 
 	Button settingsButton;
