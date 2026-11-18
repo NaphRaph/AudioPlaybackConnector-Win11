@@ -4,24 +4,12 @@
 #include <future>
 #include <thread>
 
-inline void QueueAutoAudioRepair(std::wstring deviceId, uint64_t generation)
-{
-	if (g_shuttingDown || !IsWindow(g_hWnd))
-		return;
-
-	auto message = std::make_unique<ConnectionStateChangedMessage>();
-	message->deviceId = std::move(deviceId);
-	message->generation = generation;
-	if (PostMessageW(g_hWnd, WM_AUTO_REPAIR_AUDIO, 0, reinterpret_cast<LPARAM>(message.get())))
-		message.release();
-}
-
 // Per-phone audio controller. Manages both:
-// 1. 0%-100%: native Windows playback session volume (zero latency, no extra stream)
+// 1. 0%-100%: native Windows playback session volume (zero latency, no extra stream,
+//    no WASAPI capture client opened).
 // 2. 101%-200%: shared-mode WASAPI capture + boosted render with soft peak limiter,
-//    automatically releasing and unmuting the native session whenever idle or paused.
-// Also monitors active A2DP capture endpoints for the Windows cold-link bug
-// (endpoint active but 0 packets delivered) and triggers automatic repair.
+//    automatically releasing the render stream and unmuting the native session
+//    whenever the phone is paused or silent.
 class PhoneAudioProcessor : public std::enable_shared_from_this<PhoneAudioProcessor>
 {
 public:
@@ -222,6 +210,14 @@ private:
 		{
 			SyncNativeSessionVolume(checkedLeftoverMute);
 
+			// In 0%-100% mode, rely purely on the native Windows playback session
+			// without opening any WASAPI capture stream on the A2DP endpoint.
+			if (!IsBoostedVolume(g_playbackVolume.load()))
+			{
+				std::this_thread::sleep_for(std::chrono::milliseconds(200));
+				continue;
+			}
+
 			winrt::com_ptr<IMMDevice> input;
 			const std::wstring endpointGuid = FindCachedPhoneEndpointGuid(m_deviceId);
 			if (!endpointGuid.empty())
@@ -245,7 +241,6 @@ private:
 				continue;
 			}
 
-			// The phone's A2DP capture endpoint is now DEVICE_STATE_ACTIVE.
 			winrt::com_ptr<IAudioClient> captureClient;
 			if (FAILED(input->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, captureClient.put_void())))
 			{
@@ -312,11 +307,8 @@ private:
 				releaseBoostStream();
 			});
 
-			const auto streamStartTime = std::chrono::steady_clock::now();
-			auto lastPacketTime = streamStartTime;
-			auto lastAudibleTime = streamStartTime;
-			auto nextCheckTime = streamStartTime;
-			bool receivedAnyPackets = false;
+			auto lastAudibleTime = std::chrono::steady_clock::now();
+			auto nextCheckTime = lastAudibleTime;
 
 			while (!m_stop && !g_shuttingDown)
 			{
@@ -326,10 +318,12 @@ private:
 
 				const auto now = std::chrono::steady_clock::now();
 				const double currentSlider = g_playbackVolume.load();
-				const bool wantBoost = IsBoostedVolume(currentSlider);
-
-				if (!wantBoost && (boostMuted || renderClient))
-					releaseBoostStream();
+				if (!IsBoostedVolume(currentSlider))
+				{
+					// Slider returned to 0%-100%; exit boost capture loop and
+					// let the outer loop manage the native session volume.
+					break;
+				}
 
 				UINT32 packetFrames = 0;
 				if (FAILED(capture->GetNextPacketSize(&packetFrames)))
@@ -343,14 +337,6 @@ private:
 					if (FAILED(capture->GetBuffer(&source, &frames, &flags, nullptr, nullptr)))
 						break;
 
-					if (!receivedAnyPackets)
-					{
-						receivedAnyPackets = true;
-						std::lock_guard lock(g_connectionMutex);
-						g_autoStreamRepairAttempted.erase(m_deviceId);
-					}
-					lastPacketTime = now;
-
 					float peak = 0.0f;
 					if (!(flags & AUDCLNT_BUFFERFLAGS_SILENT) && frames > 0 && source)
 					{
@@ -363,47 +349,44 @@ private:
 					if (audible)
 						lastAudibleTime = now;
 
-					if (wantBoost)
+					if (!renderClient && audible)
 					{
-						if (!renderClient && audible)
+						OpenRenderStream(enumerator.get(), format.get(),
+							renderClient, render, renderOutputId, renderCapacity);
+					}
+					if (renderClient && !boostMuted && audible)
+					{
+						if (SetPhoneAudioSessionVolume(m_deviceId, 0.0f))
 						{
-							OpenRenderStream(enumerator.get(), format.get(),
-								renderClient, render, renderOutputId, renderCapacity);
+							boostMuted = true;
+							AppendLog(L"Phone audio boost takeover started at " +
+								std::to_wstring(static_cast<int>(std::lround(currentSlider * 100.0))) +
+								L"%: " + m_deviceId);
 						}
-						if (renderClient && !boostMuted && audible)
+					}
+					if (renderClient && boostMuted && frames > 0)
+					{
+						UINT32 padding = 0;
+						if (SUCCEEDED(renderClient->GetCurrentPadding(&padding)) && renderCapacity > padding)
 						{
-							if (SetPhoneAudioSessionVolume(m_deviceId, 0.0f))
+							const UINT32 writeFrames = (std::min)(frames, renderCapacity - padding);
+							BYTE* destination = nullptr;
+							if (writeFrames > 0 && SUCCEEDED(render->GetBuffer(writeFrames, &destination)))
 							{
-								boostMuted = true;
-								AppendLog(L"Phone audio boost takeover started at " +
-									std::to_wstring(static_cast<int>(std::lround(currentSlider * 100.0))) +
-									L"%: " + m_deviceId);
-							}
-						}
-						if (renderClient && boostMuted && frames > 0)
-						{
-							UINT32 padding = 0;
-							if (SUCCEEDED(renderClient->GetCurrentPadding(&padding)) && renderCapacity > padding)
-							{
-								const UINT32 writeFrames = (std::min)(frames, renderCapacity - padding);
-								BYTE* destination = nullptr;
-								if (writeFrames > 0 && SUCCEEDED(render->GetBuffer(writeFrames, &destination)))
+								if (audible)
 								{
-									if (audible)
-									{
-										std::memcpy(destination, source,
-											static_cast<size_t>(writeFrames) * format->nBlockAlign);
-										const size_t count = static_cast<size_t>(writeFrames) * format->nChannels;
-										if (sampleFormat == SampleFormat::Float32)
-											ProcessPhoneSamples(reinterpret_cast<float*>(destination), count, static_cast<float>(currentSlider));
-										else
-											ProcessPhoneSamplesPcm16(reinterpret_cast<int16_t*>(destination), count, static_cast<float>(currentSlider));
-										render->ReleaseBuffer(writeFrames, 0);
-									}
+									std::memcpy(destination, source,
+										static_cast<size_t>(writeFrames) * format->nBlockAlign);
+									const size_t count = static_cast<size_t>(writeFrames) * format->nChannels;
+									if (sampleFormat == SampleFormat::Float32)
+										ProcessPhoneSamples(reinterpret_cast<float*>(destination), count, static_cast<float>(currentSlider));
 									else
-									{
-										render->ReleaseBuffer(writeFrames, AUDCLNT_BUFFERFLAGS_SILENT);
-									}
+										ProcessPhoneSamplesPcm16(reinterpret_cast<int16_t*>(destination), count, static_cast<float>(currentSlider));
+									render->ReleaseBuffer(writeFrames, 0);
+								}
+								else
+								{
+									render->ReleaseBuffer(writeFrames, AUDCLNT_BUFFERFLAGS_SILENT);
 								}
 							}
 						}
@@ -420,42 +403,14 @@ private:
 
 					DWORD endpointState = 0;
 					if (FAILED(input->GetState(&endpointState)) || endpointState != DEVICE_STATE_ACTIVE)
-					{
-						// Phone paused A2DP streaming or switched to earphones.
-						// Close capture/render handles so resuming opens a fresh stream.
 						break;
-					}
-
-					if (!receivedAnyPackets &&
-						now - streamStartTime >= std::chrono::milliseconds(2000))
-					{
-						bool shouldAutoRepair = false;
-						{
-							std::lock_guard lock(g_connectionMutex);
-							shouldAutoRepair = g_autoStreamRepairAttempted.insert(m_deviceId).second;
-						}
-						if (shouldAutoRepair)
-						{
-							AppendLog(L"Cold A2DP link detected (endpoint active with 0 packets for 2000 ms); starting automatic audio repair: " + m_deviceId);
-							QueueAutoAudioRepair(m_deviceId, m_generation);
-							return;
-						}
-					}
-
-					if (receivedAnyPackets &&
-						now - lastPacketTime >= std::chrono::milliseconds(1500))
-					{
-						// Stream stopped delivering packets while endpoint stayed active;
-						// recycle the capture client cleanly.
-						break;
-					}
 
 					if (boostMuted)
 					{
-						if (now - lastAudibleTime >= std::chrono::milliseconds(2000))
+						if (now - lastAudibleTime >= std::chrono::milliseconds(1500))
 						{
-							// Release boost takeover after 2s of silence so the native
-							// session is never left muted while idle.
+							// Release boost takeover after 1.5s of silence/pause so the
+							// native session is restored to 100% whenever idle.
 							releaseBoostStream();
 						}
 						else

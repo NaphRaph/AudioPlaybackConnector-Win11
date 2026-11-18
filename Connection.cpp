@@ -181,18 +181,6 @@ void HandleConnectionStateChanged(ConnectionStateChangedMessage* raw)
 	QueueDeviceListRefresh();
 }
 
-void HandleAutoAudioRepair(ConnectionStateChangedMessage* raw)
-{
-	std::unique_ptr<ConnectionStateChangedMessage> message(raw);
-	if (!message || g_shuttingDown || g_radioRecoveryInProgress)
-		return;
-
-	if (!IsCurrentConnection(message->deviceId, message->generation))
-		return;
-
-	RepairDeviceAudio(message->deviceId);
-}
-
 winrt::fire_and_forget ConnectDevice(std::wstring deviceId)
 {
 	if (g_radioRecoveryInProgress)
@@ -590,7 +578,6 @@ winrt::fire_and_forget DisconnectDevice(std::wstring deviceId)
 		std::lock_guard lock(g_connectionMutex);
 		g_deviceErrorMessages.erase(deviceId);
 		g_primedDevices.erase(deviceId);
-		g_autoStreamRepairAttempted.erase(deviceId);
 		g_rememberedDevices.erase(deviceId);
 	}
 	SaveSettings();

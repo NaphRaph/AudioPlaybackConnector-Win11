@@ -295,9 +295,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_CONNECTION_STATE_CHANGED:
 		HandleConnectionStateChanged(reinterpret_cast<ConnectionStateChangedMessage*>(lParam));
 		break;
-	case WM_AUTO_REPAIR_AUDIO:
-		HandleAutoAudioRepair(reinterpret_cast<ConnectionStateChangedMessage*>(lParam));
-		break;
 	case WM_VOLUME_CHANGED:
 	{
 		g_updatingVolumeSlider = true;

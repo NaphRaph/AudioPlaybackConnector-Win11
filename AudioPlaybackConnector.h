@@ -17,7 +17,6 @@ constexpr UINT WM_CONNECTDEVICE = WM_APP + 2;
 constexpr UINT WM_CONNECTION_STATE_CHANGED = WM_APP + 3;
 constexpr UINT WM_DEVICE_LIST_CHANGED = WM_APP + 4;
 constexpr UINT WM_VOLUME_CHANGED = WM_APP + 5;
-constexpr UINT WM_AUTO_REPAIR_AUDIO = WM_APP + 6;
 constexpr UINT_PTR SHUTDOWN_TIMER_ID = 1;
 constexpr UINT_PTR VOLUME_SAVE_TIMER_ID = 2;
 constexpr UINT SHUTDOWN_RELEASE_DELAY_MS = 2000;
@@ -71,7 +70,6 @@ inline std::unordered_map<std::wstring, std::shared_ptr<PhoneAudioProcessor>> g_
 inline std::unordered_map<std::wstring, std::wstring> g_deviceErrorMessages;
 inline std::unordered_set<std::wstring> g_radioRecoveryCandidates;
 inline std::unordered_set<std::wstring> g_autoRadioRecoveryAttempted;
-inline std::unordered_set<std::wstring> g_autoStreamRepairAttempted;
 // Devices whose first connection has already been primed in this connection cycle.
 inline std::unordered_set<std::wstring> g_primedDevices;
 // Devices remembered for automatic reconnect across restarts/shutdowns.
@@ -140,7 +138,6 @@ void RefreshDevicePicker();
 
 // Connection.cpp
 void HandleConnectionStateChanged(ConnectionStateChangedMessage* message);
-void HandleAutoAudioRepair(ConnectionStateChangedMessage* message);
 winrt::fire_and_forget ConnectDevice(std::wstring deviceId);
 winrt::fire_and_forget ConnectDevice(DeviceInformation device);
 winrt::fire_and_forget AutoConnectDevice(std::wstring deviceId);
