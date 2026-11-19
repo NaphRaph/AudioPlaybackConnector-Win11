@@ -100,3 +100,56 @@ inline fs::path GetAppDataDirectory()
 	fs::create_directories(path);
 	return path;
 }
+
+inline constexpr wchar_t STARTUP_REG_PATH[] = LR"(Software\Microsoft\Windows\CurrentVersion\Run)";
+inline constexpr wchar_t STARTUP_APPROVED_REG_PATH[] = LR"(Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run)";
+inline constexpr wchar_t STARTUP_VALUE_NAME[] = L"AudioPlaybackConnector";
+
+inline bool IsStartOnBootEnabled()
+{
+	DWORD size = 0;
+	if (RegGetValueW(HKEY_CURRENT_USER, STARTUP_REG_PATH, STARTUP_VALUE_NAME,
+		RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ, nullptr, nullptr, &size) != ERROR_SUCCESS ||
+		size <= sizeof(wchar_t))
+	{
+		return false;
+	}
+
+	BYTE approved[32]{};
+	DWORD approvedSize = sizeof(approved);
+	if (RegGetValueW(HKEY_CURRENT_USER, STARTUP_APPROVED_REG_PATH, STARTUP_VALUE_NAME,
+		RRF_RT_REG_BINARY, nullptr, approved, &approvedSize) == ERROR_SUCCESS &&
+		approvedSize >= 1)
+	{
+		// Task Manager marks disabled startup entries with an odd first byte (e.g. 0x03).
+		if ((approved[0] & 0x01) != 0)
+			return false;
+	}
+	return true;
+}
+
+inline bool SetStartOnBootEnabled(bool enable)
+{
+	if (enable)
+	{
+		const auto exePath = GetModuleFsPath(nullptr).wstring();
+		if (exePath.empty())
+			return false;
+		const std::wstring command = L"\"" + exePath + L"\"";
+		const auto status = RegSetKeyValueW(
+			HKEY_CURRENT_USER,
+			STARTUP_REG_PATH,
+			STARTUP_VALUE_NAME,
+			REG_SZ,
+			command.c_str(),
+			static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t)));
+		if (status != ERROR_SUCCESS)
+			return false;
+		RegDeleteKeyValueW(HKEY_CURRENT_USER, STARTUP_APPROVED_REG_PATH, STARTUP_VALUE_NAME);
+		return true;
+	}
+
+	const auto status = RegDeleteKeyValueW(HKEY_CURRENT_USER, STARTUP_REG_PATH, STARTUP_VALUE_NAME);
+	RegDeleteKeyValueW(HKEY_CURRENT_USER, STARTUP_APPROVED_REG_PATH, STARTUP_VALUE_NAME);
+	return status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND;
+}

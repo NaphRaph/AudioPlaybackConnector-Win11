@@ -50,6 +50,9 @@ msgstr "退出"
 msgid "Bluetooth Settings"
 msgstr "蓝牙设置"
 
+msgid "Start on boot"
+msgstr "开机自启"
+
 msgid "Open Logs Folder"
 msgstr "打开日志文件夹"
 

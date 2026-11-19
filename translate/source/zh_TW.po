@@ -50,6 +50,9 @@ msgstr "結束"
 msgid "Bluetooth Settings"
 msgstr "藍牙設定"
 
+msgid "Start on boot"
+msgstr "開機自動啟動"
+
 msgid "Open Logs Folder"
 msgstr "開啟記錄資料夾"
 

@@ -193,6 +193,24 @@ void SetupMenu()
 {
 	const bool lightTheme = IsLightTheme();
 
+	ToggleMenuFlyoutItem startOnBootItem;
+	startOnBootItem.Text(_(L"Start on boot"));
+	startOnBootItem.FontFamily(UiFontFamily());
+	startOnBootItem.IsChecked(IsStartOnBootEnabled());
+	startOnBootItem.Click([](const auto& sender, const auto&) {
+		auto item = sender.as<ToggleMenuFlyoutItem>();
+		const bool desired = item.IsChecked();
+		if (!SetStartOnBootEnabled(desired))
+		{
+			item.IsChecked(!desired);
+			AppendLog(L"Failed to update start on boot setting");
+		}
+		else
+		{
+			AppendLog(desired ? L"Start on boot enabled" : L"Start on boot disabled");
+		}
+	});
+
 	// https://docs.microsoft.com/en-us/windows/uwp/design/style/segoe-ui-symbol-font
 	FontIcon settingsIcon;
 	settingsIcon.Glyph(L"\xE713");
@@ -261,13 +279,17 @@ void SetupMenu()
 	});
 
 	MenuFlyout menu;
+	menu.Items().Append(startOnBootItem);
+	menu.Items().Append(MenuFlyoutSeparator());
 	menu.Items().Append(settingsItem);
 	menu.Items().Append(logItem);
+	menu.Items().Append(MenuFlyoutSeparator());
 	menu.Items().Append(exitItem);
 	for (const auto& item : menu.Items())
 		ApplyUiLanguage(item.as<FrameworkElement>());
 	ApplyWin11MenuStyle(menu, lightTheme);
-	menu.Opened([](const auto& sender, const auto&) {
+	menu.Opened([startOnBootItem](const auto& sender, const auto&) {
+		startOnBootItem.IsChecked(IsStartOnBootEnabled());
 		auto menuItems = sender.as<MenuFlyout>().Items();
 		auto itemsCount = menuItems.Size();
 		if (itemsCount > 0)
