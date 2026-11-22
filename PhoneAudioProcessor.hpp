@@ -113,6 +113,7 @@ private:
 
 	bool OpenRenderStream(
 		IMMDeviceEnumerator* enumerator,
+		const std::wstring& targetOutputId,
 		const WAVEFORMATEX* format,
 		winrt::com_ptr<IAudioClient>& renderClient,
 		winrt::com_ptr<IAudioRenderClient>& render,
@@ -125,7 +126,12 @@ private:
 		renderCapacity = 0;
 
 		winrt::com_ptr<IMMDevice> output;
-		if (FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, output.put())))
+		if (!targetOutputId.empty())
+		{
+			if (FAILED(enumerator->GetDevice(targetOutputId.c_str(), output.put())))
+				output = nullptr;
+		}
+		if (!output && FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, output.put())))
 			return false;
 
 		LPWSTR rawOutputId = nullptr;
@@ -210,9 +216,14 @@ private:
 		{
 			SyncNativeSessionVolume(checkedLeftoverMute);
 
-			// In 0%-100% mode, rely purely on the native Windows playback session
-			// without opening any WASAPI capture stream on the A2DP endpoint.
-			if (!IsBoostedVolume(g_playbackVolume.load()))
+			std::wstring targetOutputId;
+			bool matchesDefault = true;
+			ResolveTargetRenderDevice(enumerator.get(), targetOutputId, matchesDefault);
+			const bool needsTakeover = IsBoostedVolume(g_playbackVolume.load()) || !matchesDefault;
+
+			// In 0%-100% mode on the system default output, rely purely on the
+			// native Windows playback session without opening any capture stream.
+			if (!needsTakeover)
 			{
 				std::this_thread::sleep_for(std::chrono::milliseconds(200));
 				continue;
@@ -318,10 +329,15 @@ private:
 
 				const auto now = std::chrono::steady_clock::now();
 				const double currentSlider = g_playbackVolume.load();
-				if (!IsBoostedVolume(currentSlider))
+				if (now >= nextCheckTime)
 				{
-					// Slider returned to 0%-100%; exit boost capture loop and
-					// let the outer loop manage the native session volume.
+					ResolveTargetRenderDevice(enumerator.get(), targetOutputId, matchesDefault);
+				}
+				const bool needsTakeoverNow = IsBoostedVolume(currentSlider) || !matchesDefault;
+				if (!needsTakeoverNow)
+				{
+					// Returned to 0%-100% on system default output; exit capture
+					// loop and let the outer loop manage the native session.
 					break;
 				}
 
@@ -351,7 +367,8 @@ private:
 
 					if (!renderClient && audible)
 					{
-						OpenRenderStream(enumerator.get(), format.get(),
+						ResolveTargetRenderDevice(enumerator.get(), targetOutputId, matchesDefault);
+						OpenRenderStream(enumerator.get(), targetOutputId, format.get(),
 							renderClient, render, renderOutputId, renderCapacity);
 					}
 					if (renderClient && !boostMuted && audible)
@@ -359,9 +376,11 @@ private:
 						if (SetPhoneAudioSessionVolume(m_deviceId, 0.0f))
 						{
 							boostMuted = true;
-							AppendLog(L"Phone audio boost takeover started at " +
+							AppendLog(std::wstring(IsBoostedVolume(currentSlider) ?
+								L"Phone audio boost takeover started at " :
+								L"Phone audio output reroute started at ") +
 								std::to_wstring(static_cast<int>(std::lround(currentSlider * 100.0))) +
-								L"%: " + m_deviceId);
+								L"% -> " + renderOutputId + L": " + m_deviceId);
 						}
 					}
 					if (renderClient && boostMuted && frames > 0)
@@ -415,21 +434,12 @@ private:
 						}
 						else
 						{
-							winrt::com_ptr<IMMDevice> currentOutput;
-							if (SUCCEEDED(enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, currentOutput.put())))
+							const bool outputChanged = !targetOutputId.empty() && !EqualsIgnoreCase(renderOutputId, targetOutputId);
+							if (outputChanged)
 							{
-								LPWSTR rawCurrentId = nullptr;
-								if (SUCCEEDED(currentOutput->GetId(&rawCurrentId)))
-								{
-									const bool outputChanged = (renderOutputId != rawCurrentId);
-									CoTaskMemFree(rawCurrentId);
-									if (outputChanged)
-									{
-										AppendLog(L"Default audio output changed; rebinding boost renderer: " + m_deviceId);
-										releaseBoostStream();
-										continue;
-									}
-								}
+								AppendLog(L"Target audio output changed; rebinding renderer: " + m_deviceId);
+								releaseBoostStream();
+								continue;
 							}
 							SetPhoneAudioSessionVolume(m_deviceId, 0.0f);
 						}

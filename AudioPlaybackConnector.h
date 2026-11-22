@@ -106,8 +106,12 @@ inline std::atomic_bool g_playbackVolumeExplicit = false;
 // Set when the user moves the slider; the audio worker applies it immediately.
 inline std::atomic_bool g_volumeApplyPending = false;
 inline std::atomic_bool g_updatingVolumeSlider = false;
+inline std::atomic_bool g_updatingOutputCombo = false;
 inline Slider g_volumeSlider = nullptr;
 inline TextBlock g_volumeValueText = nullptr;
+inline ComboBox g_outputDeviceCombo = nullptr;
+inline std::vector<std::wstring> g_outputDeviceComboIds;
+inline std::wstring g_preferredOutputDeviceId;
 inline std::unordered_map<std::wstring, std::wstring> g_phoneEndpointGuids;
 inline std::vector<std::wstring> g_lastDevices;
 inline uint64_t g_nextConnectionGeneration = 0;
@@ -131,6 +135,7 @@ void SetupFlyout();
 void SetupMenu();
 void SetupDevicePicker();
 void RefreshDevicePicker();
+void RefreshOutputDevicePicker();
 
 // Connection.cpp
 void HandleConnectionStateChanged(ConnectionStateChangedMessage* message);

@@ -511,6 +511,54 @@ void RefreshDevicePicker()
 	}
 }
 
+void RefreshOutputDevicePicker()
+{
+	if (g_shuttingDown || !g_outputDeviceCombo)
+		return;
+
+	const auto endpoints = EnumerateRenderEndpoints();
+	std::wstring defaultName;
+	for (const auto& ep : endpoints)
+	{
+		if (ep.IsDefault)
+		{
+			defaultName = ep.Name;
+			break;
+		}
+	}
+
+	const std::wstring preferred = GetPreferredOutputDeviceId();
+	g_updatingOutputCombo = true;
+	auto guard = wil::scope_exit([] { g_updatingOutputCombo = false; });
+
+	g_outputDeviceCombo.Items().Clear();
+	g_outputDeviceComboIds.clear();
+
+	std::wstring defaultLabel = _(L"System default");
+	if (!defaultName.empty())
+		defaultLabel += L" (" + defaultName + L")";
+
+	ComboBoxItem defaultItem;
+	defaultItem.Content(winrt::box_value(defaultLabel));
+	defaultItem.FontFamily(UiFontFamily());
+	g_outputDeviceCombo.Items().Append(defaultItem);
+	g_outputDeviceComboIds.push_back(L"");
+
+	int selectedIndex = 0;
+	for (const auto& ep : endpoints)
+	{
+		ComboBoxItem item;
+		item.Content(winrt::box_value(ep.Name));
+		item.FontFamily(UiFontFamily());
+		g_outputDeviceCombo.Items().Append(item);
+		g_outputDeviceComboIds.push_back(ep.Id);
+		if (!preferred.empty() && EqualsIgnoreCase(ep.Id, preferred))
+			selectedIndex = static_cast<int>(g_outputDeviceComboIds.size()) - 1;
+	}
+
+	g_outputDeviceCombo.SelectedIndex(selectedIndex);
+}
+
 void SetupDevicePicker()
 {
 	using namespace winrt::Windows::UI::Xaml::Media;
@@ -686,6 +734,46 @@ void SetupDevicePicker()
 			SetTimer(g_hWnd, VOLUME_SAVE_TIMER_ID, VOLUME_SAVE_DEBOUNCE_MS, nullptr);
 	});
 
+	Grid outputRow;
+	outputRow.Margin({ 0, 0, 0, 12 });
+	ColumnDefinition outputLabelColumn;
+	outputLabelColumn.Width(GridLength{ 92, GridUnitType::Pixel });
+	ColumnDefinition outputComboColumn;
+	outputComboColumn.Width(GridLength{ 1, GridUnitType::Star });
+	outputRow.ColumnDefinitions().Append(outputLabelColumn);
+	outputRow.ColumnDefinitions().Append(outputComboColumn);
+
+	TextBlock outputLabel;
+	outputLabel.Text(_(L"Output device"));
+	outputLabel.FontFamily(UiFontFamily());
+	outputLabel.VerticalAlignment(VerticalAlignment::Center);
+	outputLabel.Foreground(textBrush);
+	Grid::SetColumn(outputLabel, 0);
+	outputRow.Children().Append(outputLabel);
+
+	ComboBox outputCombo;
+	outputCombo.HorizontalAlignment(HorizontalAlignment::Stretch);
+	outputCombo.FontFamily(UiFontFamily());
+	outputCombo.FontSize(13);
+	Grid::SetColumn(outputCombo, 1);
+	outputRow.Children().Append(outputCombo);
+	g_outputDeviceCombo = outputCombo;
+	RefreshOutputDevicePicker();
+
+	outputCombo.SelectionChanged([](const auto& sender, const auto&) {
+		if (g_updatingOutputCombo.load())
+			return;
+		const int idx = sender.as<ComboBox>().SelectedIndex();
+		if (idx < 0 || static_cast<size_t>(idx) >= g_outputDeviceComboIds.size())
+			return;
+		const auto& chosenId = g_outputDeviceComboIds[static_cast<size_t>(idx)];
+		SetPreferredOutputDeviceId(chosenId);
+		AppendLog(chosenId.empty() ?
+			std::wstring(L"Output device set to System default") :
+			(L"Output device set to " + chosenId));
+		SaveSettings();
+	});
+
 	Button settingsButton;
 	settingsButton.Content(winrt::box_value(_(L"Bluetooth Settings")));
 	settingsButton.FontFamily(UiFontFamily());
@@ -724,6 +812,7 @@ void SetupDevicePicker()
 	content.Children().Append(titlePanel);
 	content.Children().Append(subtitle);
 	content.Children().Append(volumeRow);
+	content.Children().Append(outputRow);
 	content.Children().Append(deviceScroll);
 	content.Children().Append(footer);
 

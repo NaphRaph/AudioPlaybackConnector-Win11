@@ -109,6 +109,130 @@ inline void InvalidateCachedPhoneEndpointGuid(std::wstring_view deviceId)
 	g_phoneEndpointGuids.erase(std::wstring(deviceId));
 }
 
+struct RenderEndpointInfo
+{
+	std::wstring Id;
+	std::wstring Name;
+	bool IsDefault{};
+};
+
+inline std::wstring GetPreferredOutputDeviceId()
+{
+	std::lock_guard lock(g_volumeMutex);
+	return g_preferredOutputDeviceId;
+}
+
+inline void SetPreferredOutputDeviceId(std::wstring deviceId)
+{
+	std::lock_guard lock(g_volumeMutex);
+	g_preferredOutputDeviceId = std::move(deviceId);
+}
+
+inline std::vector<RenderEndpointInfo> EnumerateRenderEndpoints()
+{
+	std::vector<RenderEndpointInfo> result;
+	winrt::com_ptr<IMMDeviceEnumerator> enumerator;
+	if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+		__uuidof(IMMDeviceEnumerator), enumerator.put_void())))
+		return result;
+
+	std::wstring defaultId;
+	winrt::com_ptr<IMMDevice> defaultOutput;
+	if (SUCCEEDED(enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, defaultOutput.put())) && defaultOutput)
+	{
+		LPWSTR rawId = nullptr;
+		if (SUCCEEDED(defaultOutput->GetId(&rawId)) && rawId)
+		{
+			defaultId.assign(rawId);
+			CoTaskMemFree(rawId);
+		}
+	}
+
+	winrt::com_ptr<IMMDeviceCollection> outputs;
+	if (FAILED(enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, outputs.put())))
+		return result;
+	UINT count = 0;
+	if (FAILED(outputs->GetCount(&count)))
+		return result;
+
+	result.reserve(count);
+	for (UINT i = 0; i < count; ++i)
+	{
+		winrt::com_ptr<IMMDevice> device;
+		if (FAILED(outputs->Item(i, device.put())) || !device)
+			continue;
+		LPWSTR rawId = nullptr;
+		if (FAILED(device->GetId(&rawId)) || !rawId)
+			continue;
+		RenderEndpointInfo info;
+		info.Id.assign(rawId);
+		CoTaskMemFree(rawId);
+		info.IsDefault = !defaultId.empty() && EqualsIgnoreCase(info.Id, defaultId);
+
+		winrt::com_ptr<IPropertyStore> store;
+		if (SUCCEEDED(device->OpenPropertyStore(STGM_READ, store.put())) && store)
+		{
+			PROPVARIANT value;
+			PropVariantInit(&value);
+			if (SUCCEEDED(store->GetValue(PKEY_Device_FriendlyName, &value)) &&
+				value.vt == VT_LPWSTR && value.pwszVal)
+			{
+				info.Name.assign(value.pwszVal);
+			}
+			PropVariantClear(&value);
+		}
+		if (info.Name.empty())
+			info.Name = info.Id;
+		result.push_back(std::move(info));
+	}
+	return result;
+}
+
+inline bool ResolveTargetRenderDevice(
+	IMMDeviceEnumerator* enumerator,
+	std::wstring& targetId,
+	bool& matchesDefault)
+{
+	targetId.clear();
+	matchesDefault = true;
+	if (!enumerator)
+		return false;
+
+	std::wstring defaultId;
+	winrt::com_ptr<IMMDevice> defaultOutput;
+	if (SUCCEEDED(enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, defaultOutput.put())) && defaultOutput)
+	{
+		LPWSTR rawId = nullptr;
+		if (SUCCEEDED(defaultOutput->GetId(&rawId)) && rawId)
+		{
+			defaultId.assign(rawId);
+			CoTaskMemFree(rawId);
+		}
+	}
+
+	const std::wstring preferred = GetPreferredOutputDeviceId();
+	if (!preferred.empty())
+	{
+		winrt::com_ptr<IMMDevice> preferredDevice;
+		DWORD state = 0;
+		if (SUCCEEDED(enumerator->GetDevice(preferred.c_str(), preferredDevice.put())) &&
+			preferredDevice &&
+			SUCCEEDED(preferredDevice->GetState(&state)) &&
+			state == DEVICE_STATE_ACTIVE)
+		{
+			targetId = preferred;
+			matchesDefault = !defaultId.empty() && EqualsIgnoreCase(preferred, defaultId);
+			return true;
+		}
+	}
+
+	if (defaultId.empty())
+		return false;
+	targetId = std::move(defaultId);
+	matchesDefault = true;
+	return true;
+}
+
 struct PhoneAudioSession
 {
 	winrt::com_ptr<ISimpleAudioVolume> Volume;

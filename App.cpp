@@ -265,6 +265,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			g_xamlCanvas.Width(rect.Width);
 			g_xamlCanvas.Height(rect.Height);
 			g_devicePickerVisible = true;
+			RefreshOutputDevicePicker();
 			RefreshDevicePicker();
 			g_xamlDeviceFlyout.ShowAt(g_xamlCanvas);
 		}

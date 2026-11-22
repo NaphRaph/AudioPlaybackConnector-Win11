@@ -59,6 +59,12 @@ msgstr "開啟記錄資料夾"
 msgid "Playback volume"
 msgstr "播放音量"
 
+msgid "Output device"
+msgstr "輸出裝置"
+
+msgid "System default"
+msgstr "跟隨系統預設"
+
 #: AudioPlaybackConnector.cpp:287
 msgid "Connecting"
 msgstr "連線中"

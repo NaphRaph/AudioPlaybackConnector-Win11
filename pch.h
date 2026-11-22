@@ -21,6 +21,7 @@
 #include <audioclient.h>
 #include <audiopolicy.h>
 #include <endpointvolume.h>
+#include <functiondiscoverykeys_devpkey.h>
 #include <avrt.h>
 #include <cfgmgr32.h>
 #include <d2d1_3.h>

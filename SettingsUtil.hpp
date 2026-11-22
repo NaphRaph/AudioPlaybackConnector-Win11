@@ -38,7 +38,11 @@ inline void DefaultSettings()
 {
 	g_reconnect = false;
 	g_playbackVolume = DEFAULT_PLAYBACK_VOLUME;
-	g_phoneEndpointGuids.clear();
+	{
+		std::lock_guard lock(g_volumeMutex);
+		g_preferredOutputDeviceId.clear();
+		g_phoneEndpointGuids.clear();
+	}
 	g_lastDevices.clear();
 	g_rememberedDevices.clear();
 }
@@ -80,6 +84,12 @@ inline void LoadSettings()
 			g_playbackVolumeExplicit = true;
 		}
 
+		if (jsonObj.HasKey(L"outputDeviceId") && jsonObj.Lookup(L"outputDeviceId").ValueType() == JsonValueType::String)
+		{
+			std::lock_guard lock(g_volumeMutex);
+			g_preferredOutputDeviceId = std::wstring(jsonObj.Lookup(L"outputDeviceId").GetString());
+		}
+
 		if (jsonObj.HasKey(L"lastDevices"))
 		{
 			auto lastDevices = jsonObj.Lookup(L"lastDevices").GetArray();
@@ -116,6 +126,11 @@ inline void SaveSettings()
 		else
 		{
 			jsonObj.Insert(L"volumeControlVersion", JsonValue::CreateNumberValue(5));
+		}
+
+		{
+			std::lock_guard lock(g_volumeMutex);
+			jsonObj.Insert(L"outputDeviceId", JsonValue::CreateStringValue(g_preferredOutputDeviceId));
 		}
 
 		JsonArray lastDevices;
