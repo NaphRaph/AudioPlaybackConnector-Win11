@@ -168,6 +168,7 @@ void HandleConnectionStateChanged(ConnectionStateChangedMessage* raw)
 		if (it != g_audioPlaybackConnections.end() && it->second.Generation == stateChanged->generation)
 		{
 			g_audioPlaybackConnections.erase(it);
+			g_disconnectedDevices.insert(stateChanged->deviceId);
 			g_lastConnectionCloseTimes.insert_or_assign(stateChanged->deviceId, std::chrono::steady_clock::now());
 			matched = true;
 		}
@@ -423,6 +424,44 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 	}
 	if (success && IsCurrentConnection(deviceId, generation))
 	{
+		bool needsReconnectRebind = false;
+		{
+			std::lock_guard lock(g_connectionMutex);
+			needsReconnectRebind = g_disconnectedDevices.erase(deviceId) > 0;
+		}
+		if (needsReconnectRebind)
+		{
+			// After a disconnect in the same process, the first reopened A2DP
+			// link often reports Opened without AudioSrv creating a playback
+			// session. Close it, drop all COM references, wait 3 s, and reopen
+			// cleanly—identical to the manual Repair audio sequence.
+			AppendLog(L"Rebinding A2DP audio session after prior disconnect: " + deviceId);
+			bool addedOp = false;
+			{
+				std::lock_guard lock(g_connectionMutex);
+				addedOp = g_deviceOperations.emplace(deviceId, DeviceOperation::Repairing).second;
+			}
+			auto opGuard = wil::scope_exit([deviceId, addedOp] {
+				if (!addedOp)
+					return;
+				std::lock_guard lock(g_connectionMutex);
+				g_deviceOperations.erase(deviceId);
+			});
+			CloseCurrentConnection(deviceId, generation);
+			connection = nullptr;
+			device = nullptr;
+			QueueDeviceListRefresh();
+
+			co_await winrt::resume_after(CONNECTION_RELEASE_COOLDOWN);
+			co_await uiContext;
+			if (g_shuttingDown || g_radioRecoveryInProgress)
+				co_return;
+
+			opGuard.reset();
+			ConnectDevice(deviceId);
+			co_return;
+		}
+
 		{
 			std::lock_guard lock(g_connectionMutex);
 			auto it = g_audioPlaybackConnections.find(deviceId);
@@ -550,6 +589,7 @@ winrt::fire_and_forget DisconnectDevice(std::wstring deviceId)
 	{
 		std::lock_guard lock(g_connectionMutex);
 		g_deviceErrorMessages.erase(deviceId);
+		g_disconnectedDevices.insert(deviceId);
 		g_rememberedDevices.erase(deviceId);
 	}
 	SaveSettings();
@@ -619,6 +659,10 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 			if (g_shuttingDown)
 				co_return;
 
+			{
+				std::lock_guard lock(g_connectionMutex);
+				g_disconnectedDevices.erase(deviceId);
+			}
 			ConnectDevice(deviceId);
 
 			const auto opened = co_await WaitForDeviceConnection(
@@ -725,6 +769,7 @@ winrt::fire_and_forget RecoverBluetoothRadio(std::wstring deviceId)
 			std::lock_guard lock(g_connectionMutex);
 			for (const auto& [id, entry] : g_audioPlaybackConnections)
 				connections.emplace_back(id, entry.Generation);
+			g_disconnectedDevices.clear();
 		}
 		for (const auto& [id, generation] : connections)
 		{

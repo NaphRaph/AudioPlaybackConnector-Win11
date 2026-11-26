@@ -68,6 +68,10 @@ inline std::unordered_map<std::wstring, std::shared_ptr<PhoneAudioProcessor>> g_
 inline std::unordered_map<std::wstring, std::wstring> g_deviceErrorMessages;
 inline std::unordered_set<std::wstring> g_radioRecoveryCandidates;
 inline std::unordered_set<std::wstring> g_autoRadioRecoveryAttempted;
+// Devices previously disconnected in this process; Windows AudioSrv often fails
+// to re-attach a playback session on the first reconnect after a disconnect,
+// requiring one clean close/release/reopen cycle.
+inline std::unordered_set<std::wstring> g_disconnectedDevices;
 // Devices remembered for automatic reconnect across restarts/shutdowns.
 inline std::unordered_set<std::wstring> g_rememberedDevices;
 inline std::unordered_map<std::wstring, std::wstring> g_availableDeviceNames;
