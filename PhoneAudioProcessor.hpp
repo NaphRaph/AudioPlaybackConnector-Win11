@@ -73,11 +73,13 @@ private:
 		return SampleFormat::Unsupported;
 	}
 
-	void SyncNativeSessionVolume(bool& checkedLeftoverMute)
+	bool SyncNativeSessionVolume(bool& checkedLeftoverMute, AudioSessionState& outState)
 	{
+		outState = AudioSessionStateInactive;
 		PhoneAudioSession session;
 		if (!FindPhoneAudioSession(m_deviceId, session))
-			return;
+			return false;
+		outState = session.State;
 
 		if (!checkedLeftoverMute)
 		{
@@ -87,7 +89,7 @@ private:
 				const float recovered = NativeSessionVolumeForSlider(g_playbackVolume.load());
 				SetPhoneAudioSessionVolume(m_deviceId, recovered);
 				AppendLog(L"Recovered phone session muted by a previous run: " + m_deviceId);
-				return;
+				return true;
 			}
 		}
 
@@ -100,7 +102,7 @@ private:
 				std::to_wstring(static_cast<int>(std::lround(adopted * 100.0))) + L"%");
 			if (IsWindow(g_hWnd))
 				PostMessageW(g_hWnd, WM_VOLUME_CHANGED, 0, 0);
-			return;
+			return true;
 		}
 
 		const float target = NativeSessionVolumeForSlider(g_playbackVolume.load());
@@ -109,6 +111,7 @@ private:
 			if (SetPhoneAudioSessionVolume(m_deviceId, target))
 				g_volumeApplyPending = false;
 		}
+		return true;
 	}
 
 	bool OpenRenderStream(
@@ -212,9 +215,12 @@ private:
 			__uuidof(IMMDeviceEnumerator), enumerator.put_void())))
 			return;
 
+		const auto sessionWaitDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(3000);
+
 		while (!m_stop && !g_shuttingDown)
 		{
-			SyncNativeSessionVolume(checkedLeftoverMute);
+			AudioSessionState sessionState = AudioSessionStateInactive;
+			const bool sessionFound = SyncNativeSessionVolume(checkedLeftoverMute, sessionState);
 
 			std::wstring targetOutputId;
 			bool matchesDefault = true;
@@ -223,7 +229,12 @@ private:
 
 			// In 0%-100% mode on the system default output, rely purely on the
 			// native Windows playback session without opening any capture stream.
-			if (!needsTakeover)
+			// In boost/reroute mode, wait until AudioSrv has brought its native
+			// session online before opening IAudioCaptureClient so we never race
+			// endpoint setup right after OpenAsync.
+			const bool sessionReady = sessionFound &&
+				(sessionState == AudioSessionStateActive || std::chrono::steady_clock::now() >= sessionWaitDeadline);
+			if (!needsTakeover || !sessionReady)
 			{
 				std::this_thread::sleep_for(std::chrono::milliseconds(200));
 				continue;
@@ -446,7 +457,8 @@ private:
 					}
 					else
 					{
-						SyncNativeSessionVolume(checkedLeftoverMute);
+						AudioSessionState ignoredState = AudioSessionStateInactive;
+						SyncNativeSessionVolume(checkedLeftoverMute, ignoredState);
 					}
 				}
 			}

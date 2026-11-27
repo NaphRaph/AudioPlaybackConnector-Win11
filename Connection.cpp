@@ -143,6 +143,7 @@ void CloseCurrentConnection(std::wstring_view deviceId, uint64_t generation)
 		return;
 
 	StopPhoneAudioProcessor(deviceId);
+	InvalidateCachedPhoneEndpointGuid(deviceId);
 
 	std::lock_guard lock(g_connectionMutex);
 	auto it = g_audioPlaybackConnections.find(std::wstring(deviceId));
@@ -177,6 +178,7 @@ void HandleConnectionStateChanged(ConnectionStateChangedMessage* raw)
 		return;
 
 	StopPhoneAudioProcessor(stateChanged->deviceId);
+	InvalidateCachedPhoneEndpointGuid(stateChanged->deviceId);
 	AppendLog(L"Bluetooth audio connection closed: " + stateChanged->deviceId);
 	QueueDeviceListRefresh();
 }
@@ -431,35 +433,87 @@ winrt::fire_and_forget ConnectDevice(DeviceInformation device)
 		}
 		if (needsReconnectRebind)
 		{
-			// After a disconnect in the same process, the first reopened A2DP
-			// link often reports Opened without AudioSrv creating a playback
-			// session. Close it, drop all COM references, wait 3 s, and reopen
-			// cleanly—identical to the manual Repair audio sequence.
-			AppendLog(L"Rebinding A2DP audio session after prior disconnect: " + deviceId);
-			bool addedOp = false;
-			{
-				std::lock_guard lock(g_connectionMutex);
-				addedOp = g_deviceOperations.emplace(deviceId, DeviceOperation::Repairing).second;
-			}
-			auto opGuard = wil::scope_exit([deviceId, addedOp] {
-				if (!addedOp)
-					return;
-				std::lock_guard lock(g_connectionMutex);
-				g_deviceOperations.erase(deviceId);
-			});
-			CloseCurrentConnection(deviceId, generation);
-			connection = nullptr;
-			device = nullptr;
-			QueueDeviceListRefresh();
+			// After a disconnect in the same process, Windows PnP and AudioSrv
+			// need ~1.7-2.2 s after OpenAsync to mount the A2DP endpoint. Closing
+			// immediately at 0 ms aborts that setup so the next open becomes the
+			// actual first settled connection and stays silent. Let this open
+			// settle first; if audio is already flowing, keep it uninterrupted,
+			// otherwise perform a clean close -> 3 s cooldown -> reopen cycle.
+			AppendLog(L"Waiting for A2DP endpoint to settle after prior disconnect: " + deviceId);
+			const auto settleStart = std::chrono::steady_clock::now();
+			const auto minSettleDeadline = settleStart + RECONNECT_SETTLE_DELAY;
+			const auto maxSettleDeadline = settleStart + RECONNECT_SETTLE_MAX_DELAY;
+			std::chrono::steady_clock::time_point endpointReadyDeadline{};
+			bool audioAlreadyFlowing = false;
 
-			co_await winrt::resume_after(CONNECTION_RELEASE_COOLDOWN);
-			co_await uiContext;
-			if (g_shuttingDown || g_radioRecoveryInProgress)
+			while (!g_shuttingDown && !g_radioRecoveryInProgress && IsCurrentConnection(deviceId, generation))
+			{
+				const auto now = std::chrono::steady_clock::now();
+				if (IsPhoneCaptureEndpointActive(deviceId))
+				{
+					PhoneAudioSession session;
+					if (FindPhoneAudioSession(deviceId, session))
+					{
+						if (session.State == AudioSessionStateActive && session.Peak > 1e-4f)
+						{
+							audioAlreadyFlowing = true;
+							break;
+						}
+						if (session.State == AudioSessionStateActive &&
+							endpointReadyDeadline == std::chrono::steady_clock::time_point{})
+						{
+							endpointReadyDeadline = now + std::chrono::milliseconds(600);
+						}
+					}
+				}
+
+				if (now >= maxSettleDeadline)
+					break;
+				if (endpointReadyDeadline != std::chrono::steady_clock::time_point{} &&
+					now >= endpointReadyDeadline && now >= minSettleDeadline)
+				{
+					break;
+				}
+
+				co_await winrt::resume_after(AUDIO_REPAIR_POLL_INTERVAL);
+				co_await uiContext;
+			}
+
+			if (g_shuttingDown || g_radioRecoveryInProgress || !IsCurrentConnection(deviceId, generation))
 				co_return;
 
-			opGuard.reset();
-			ConnectDevice(deviceId);
-			co_return;
+			if (audioAlreadyFlowing)
+			{
+				AppendLog(L"A2DP audio already flowing after reconnect; skipping rebind: " + deviceId);
+			}
+			else
+			{
+				AppendLog(L"Rebinding settled A2DP audio session after prior disconnect: " + deviceId);
+				bool addedOp = false;
+				{
+					std::lock_guard lock(g_connectionMutex);
+					addedOp = g_deviceOperations.emplace(deviceId, DeviceOperation::Repairing).second;
+				}
+				auto opGuard = wil::scope_exit([deviceId, addedOp] {
+					if (!addedOp)
+						return;
+					std::lock_guard lock(g_connectionMutex);
+					g_deviceOperations.erase(deviceId);
+				});
+				CloseCurrentConnection(deviceId, generation);
+				connection = nullptr;
+				device = nullptr;
+				QueueDeviceListRefresh();
+
+				co_await winrt::resume_after(CONNECTION_RELEASE_COOLDOWN);
+				co_await uiContext;
+				if (g_shuttingDown || g_radioRecoveryInProgress)
+					co_return;
+
+				opGuard.reset();
+				ConnectDevice(deviceId);
+				co_return;
+			}
 		}
 
 		{
@@ -633,6 +687,7 @@ winrt::fire_and_forget RepairDeviceAudio(std::wstring deviceId)
 			}
 
 			StopPhoneAudioProcessor(deviceId);
+			InvalidateCachedPhoneEndpointGuid(deviceId);
 			co_await uiContext;
 			if (g_shuttingDown)
 				co_return;

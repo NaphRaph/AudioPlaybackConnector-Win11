@@ -109,6 +109,29 @@ inline void InvalidateCachedPhoneEndpointGuid(std::wstring_view deviceId)
 	g_phoneEndpointGuids.erase(std::wstring(deviceId));
 }
 
+inline bool IsPhoneCaptureEndpointActive(std::wstring_view deviceId)
+{
+	const auto endpointGuid = FindCachedPhoneEndpointGuid(deviceId);
+	if (endpointGuid.empty())
+		return false;
+
+	winrt::com_ptr<IMMDeviceEnumerator> enumerator;
+	if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+		__uuidof(IMMDeviceEnumerator), enumerator.put_void())))
+		return false;
+
+	const std::wstring captureId = L"{0.0.1.00000000}." + endpointGuid;
+	winrt::com_ptr<IMMDevice> input;
+	DWORD state = 0;
+	if (FAILED(enumerator->GetDevice(captureId.c_str(), input.put())) || !input ||
+		FAILED(input->GetState(&state)) || state != DEVICE_STATE_ACTIVE)
+	{
+		InvalidateCachedPhoneEndpointGuid(deviceId);
+		return false;
+	}
+	return true;
+}
+
 struct RenderEndpointInfo
 {
 	std::wstring Id;
@@ -241,6 +264,7 @@ struct PhoneAudioSession
 	std::wstring InstanceId;
 	AudioSessionState State{ AudioSessionStateInactive };
 	float Level{};
+	float Peak{};
 };
 
 // The session is created by AudioSrv for the A2DP sink's render path. Windows
@@ -303,6 +327,12 @@ inline bool FindPhoneAudioSession(std::wstring_view deviceId, PhoneAudioSession&
 			float level = 0;
 			if (FAILED(volume->GetMasterVolume(&level)))
 				continue;
+			float peak = 0.0f;
+			if (auto meter = control.try_as<IAudioMeterInformation>())
+			{
+				if (FAILED(meter->GetPeakValue(&peak)))
+					peak = 0.0f;
+			}
 			LPWSTR rawInstanceId = nullptr;
 			if (SUCCEEDED(control2->GetSessionInstanceIdentifier(&rawInstanceId)))
 			{
@@ -312,6 +342,7 @@ inline bool FindPhoneAudioSession(std::wstring_view deviceId, PhoneAudioSession&
 			session.Volume = volume;
 			session.State = state;
 			session.Level = std::clamp(level, 0.0f, 1.0f);
+			session.Peak = std::clamp(peak, 0.0f, 1.0f);
 			return true;
 		}
 	}
